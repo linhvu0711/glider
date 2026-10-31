@@ -27,7 +27,10 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
         if (!controller.signal.aborted) show({ step: 'qr', code, expired: false });
       }, controller.signal)
       .then(
-        () => {},
+        (result) => {
+          if (controller.signal.aborted || result === 'password') return;
+          show({ step: 'done', account: result, device, logout: 'idle' });
+        },
         () => {},
       );
   }

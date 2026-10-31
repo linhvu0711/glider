@@ -96,3 +96,31 @@ describe('QR login', () => {
     expect(qrBox().querySelector('svg')).toBeNull();
   });
 });
+
+describe('logged in', () => {
+  test('shows Done and the account row after a scan', async () => {
+    // Given: fake scenario qr-scan (scanned 3 s after the first code, account Linh Vu), device Brave on macOS
+    renderApp('qr-scan', 'Brave on macOS');
+    // When: render, advance 4 s
+    await advance(4_000);
+    // Then
+    const card = within(screen.getByRole('region', { name: 'Log in to Telegram' }));
+    expect(card.getByText('Done')).toBeTruthy();
+    expect(card.getByText('LV')).toBeTruthy();
+    expect(card.getByText('Linh Vu')).toBeTruthy();
+    expect(
+      card.getByText('Shown in Telegram as "Glider · Brave on macOS".'),
+    ).toBeTruthy();
+  });
+
+  test('shows the account name in the header after login', async () => {
+    // Given: as above
+    renderApp('qr-scan', 'Brave on macOS');
+    // When: render, advance 4 s
+    await advance(4_000);
+    // Then
+    const header = within(screen.getByRole('banner'));
+    expect(header.getByText('Linh Vu')).toBeTruthy();
+    expect(header.queryByText('Not logged in')).toBeNull();
+  });
+});

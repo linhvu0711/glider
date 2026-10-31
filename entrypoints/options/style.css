@@ -179,3 +179,43 @@ body {
   color: var(--accent-hover);
   text-decoration: underline;
 }
+
+.badge-done {
+  background: var(--green);
+  color: #fff;
+}
+
+.chip-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 600;
+}
