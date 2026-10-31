@@ -9,6 +9,20 @@ export type FakeScenario =
   | 'offline'
   | 'revoked';
 
+export const FAKE_SCENARIOS: FakeScenario[] = [
+  'default',
+  'slow',
+  'qr-scan',
+  'qr-password',
+  'qr-expire',
+  'offline',
+  'revoked',
+];
+
+export function isFakeScenario(value: string | undefined): value is FakeScenario {
+  return FAKE_SCENARIOS.includes(value as FakeScenario);
+}
+
 const QR_LIFE_MS = 30_000;
 const QR_EXPIRE_LIFE_MS = 2_000;
 const SLOW_MS = 5_000;

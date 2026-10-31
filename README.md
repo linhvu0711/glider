@@ -15,3 +15,14 @@ A Chrome extension that sends the current page's link to one Telegram chat from 
 pnpm compile
 pnpm test
 ```
+
+## Fake Telegram build
+
+`pnpm build:fake` builds Glider with a fake Telegram that gives fixed answers, for tests and screen recordings. It never talks to Telegram.
+
+Open the settings page with `?fake=<scenario>` to pick one: `default`, `slow`, `qr-scan`, `qr-password`, `qr-expire`, `offline`, `revoked`.
+
+- Phone `+84 912345678` with code `12345` logs in as Minh Anh.
+- Phone `+84 900000002` with code `12345` asks for the 2-step password `glider-pass`.
+- Phone `+84 999999999` is a number Telegram does not know.
+- Code `00000` is expired.

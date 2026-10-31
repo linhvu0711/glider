@@ -1,17 +1,21 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { connectInMemory } from '../../lib/login/connection';
-import { createLoginService } from '../../lib/login/service';
-import { createFakeAuth } from '../../lib/telegram/fake';
+import { connectPort, type LoginConnection } from '../../lib/login/connection';
 import App from './App';
 import './style.css';
 
-const connection = connectInMemory(
-  createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
-);
+function connect(): LoginConnection {
+  const port = connectPort();
+  if (import.meta.env.WXT_TELEGRAM !== 'fake') return port;
+  const fake = new URLSearchParams(location.search).get('fake') ?? undefined;
+  return {
+    ...port,
+    send: (command) => port.send(command.type === 'hello' ? { ...command, fake } : command),
+  };
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App connection={connection} />
+    <App connection={connect()} />
   </React.StrictMode>,
 );
