@@ -52,8 +52,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       }, controller.signal)
       .then(
         (result) => {
-          if (controller.signal.aborted || result === 'password') return;
-          done(result);
+          if (controller.signal.aborted) return;
+          if (result === 'password') show({ step: 'password', error: null, busy: false });
+          else done(result);
         },
         () => {},
       );
@@ -95,6 +96,16 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     }
   }
 
+  async function submitPassword(password: string) {
+    if (view.login.step !== 'password') return;
+    show({ step: 'password', error: null, busy: true });
+    try {
+      done(await auth.submitPassword(password));
+    } catch (e) {
+      if (kindOf(e) === 'bad-password') show({ step: 'password', error: 'wrong', busy: false });
+    }
+  }
+
   return {
     send(command) {
       if (command.type === 'hello') return void hello();
@@ -118,6 +129,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
           break;
         case 'submitCode':
           void submitCode(command.code);
+          break;
+        case 'submitPassword':
+          void submitPassword(command.password);
           break;
       }
     },

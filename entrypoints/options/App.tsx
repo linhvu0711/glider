@@ -6,7 +6,7 @@ import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
-import { CheckIcon } from '../../components/icons';
+import { CheckIcon, EyeIcon, EyeOffIcon } from '../../components/icons';
 
 function useLoginView(connection: LoginConnection | undefined): LoginView | null {
   const [view, setView] = useState<LoginView | null>(null);
@@ -91,6 +91,7 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
         />
       )}
       {login.step === 'code' && <CodeStep login={login} send={send} />}
+      {login.step === 'password' && <PasswordStep login={login} send={send} />}
       {login.step === 'done' && (
         <div className="account-row">
           <Avatar account={login.account} size={40} />
@@ -313,6 +314,65 @@ function CodeStep({ login, send }: { login: CodeLogin; send: Send }) {
           Use QR code instead
         </button>
       </div>
+    </form>
+  );
+}
+
+function PasswordStep({
+  login,
+  send,
+}: {
+  login: Extract<LoginStep, { step: 'password' }>;
+  send: Send;
+}) {
+  const { busy, error } = login;
+  const [password, setPassword] = useState('');
+  const [visible, setVisible] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (error) {
+      setPassword('');
+      input.current?.focus();
+    }
+  }, [error]);
+
+  return (
+    <form
+      className="form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (password !== '' && !busy) send({ type: 'submitPassword', password });
+      }}
+    >
+      <p className="prompt">Your account has a 2-step password. Enter it to finish.</p>
+      <div className="password-field">
+        <input
+          ref={input}
+          className="input password-input"
+          aria-label="2-step password"
+          type={visible ? 'text' : 'password'}
+          autoComplete="current-password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button
+          type="button"
+          className="eye"
+          aria-label={visible ? 'Hide password' : 'Show password'}
+          onClick={() => setVisible(!visible)}
+        >
+          {visible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+      {error === 'wrong' && <p className="error">That password is wrong. Try again.</p>}
+      <button type="submit" className="button" disabled={password === '' || busy}>
+        {busy ? 'Logging in…' : 'Log in'}
+      </button>
+      <button type="button" className="link" onClick={() => send({ type: 'useQr' })}>
+        Use QR code instead
+      </button>
     </form>
   );
 }

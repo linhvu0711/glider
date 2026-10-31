@@ -311,3 +311,95 @@ describe('phone login', () => {
     expect(qrBox().querySelector('svg')).toBeTruthy();
   });
 });
+
+async function toPasswordStep(user: User) {
+  const ctx = renderApp('qr-password');
+  await advance(4_000);
+  return { ...ctx, user };
+}
+
+function passwordInput() {
+  return screen.getByLabelText('2-step password') as HTMLInputElement;
+}
+
+const PASSWORD_PROMPT = 'Your account has a 2-step password. Enter it to finish.';
+
+describe('2-step password', () => {
+  test('asks for the 2-step password after a QR scan', async () => {
+    // Given: fake scenario qr-password
+    // When: render, advance 4 s
+    renderApp('qr-password');
+    await advance(4_000);
+    // Then
+    expect(screen.getByText(PASSWORD_PROMPT)).toBeTruthy();
+  });
+
+  test('asks for the 2-step password after the code', async () => {
+    // Given: fake scenario default, phone 900000002 sent
+    const user = setupUser();
+    await toCodeStep(user, { number: '900000002' });
+    // When: type 12345
+    await user.keyboard('12345');
+    await advance(0);
+    // Then
+    expect(screen.getByText(PASSWORD_PROMPT)).toBeTruthy();
+  });
+
+  test('shows and hides the password', async () => {
+    // Given: on the password step, glider typed
+    const user = setupUser();
+    await toPasswordStep(user);
+    await user.type(passwordInput(), 'glider');
+    // When: click Show password; then click Hide password
+    await user.click(screen.getByRole('button', { name: 'Show password' }));
+    const shown = passwordInput().type;
+    await user.click(screen.getByRole('button', { name: 'Hide password' }));
+    // Then
+    expect(shown).toBe('text');
+    expect(passwordInput().type).toBe('password');
+  });
+
+  test('says the password is wrong', async () => {
+    // Given: on the password step
+    const user = setupUser();
+    await toPasswordStep(user);
+    // When: type nope, click Log in
+    await user.type(passwordInput(), 'nope');
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await advance(0);
+    // Then
+    expect(screen.getByText('That password is wrong. Try again.')).toBeTruthy();
+    expect(passwordInput().value).toBe('');
+  });
+
+  test('logs in with the right password', async () => {
+    // Given: on the password step after qr-password
+    const user = setupUser();
+    await toPasswordStep(user);
+    // When: type glider-pass, click Log in
+    await user.type(passwordInput(), 'glider-pass');
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await advance(0);
+    // Then
+    const card = within(screen.getByRole('region', { name: 'Log in to Telegram' }));
+    expect(card.getByText('Done')).toBeTruthy();
+    expect(card.getByText('Tuan Vu')).toBeTruthy();
+  });
+
+  test('shows Logging in and sends the password once', async () => {
+    // Given: fake scenario slow with phone 900000002, on the password step, a spy on the fake's submitPassword
+    const user = setupUser();
+    const { auth } = await toCodeStep(user, { scenario: 'slow', number: '900000002' });
+    await user.keyboard('12345');
+    await advance(5_000);
+    const submitPassword = vi.spyOn(auth, 'submitPassword');
+    // When: type glider-pass, click Log in twice
+    await user.type(passwordInput(), 'glider-pass');
+    await user.click(screen.getByRole('button', { name: 'Log in' }));
+    await user.click(screen.getByRole('button', { name: 'Logging in…' }));
+    // Then
+    const button = screen.getByRole('button', { name: 'Logging in…' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(submitPassword).toHaveBeenCalledTimes(1);
+  });
+});

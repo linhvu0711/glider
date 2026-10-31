@@ -30,6 +30,8 @@ const SCAN_AFTER_MS = 3_000;
 
 const LINH: Account = { name: 'Linh Vu', initials: 'LV' };
 const MINH: Account = { name: 'Minh Anh', initials: 'MA' };
+const TUAN: Account = { name: 'Tuan Vu', initials: 'TV' };
+const PASSWORD = 'glider-pass';
 
 function wait(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
@@ -39,6 +41,7 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
   let tokenCount = 0;
   const qrLife = scenario === 'qr-expire' ? QR_EXPIRE_LIFE_MS : QR_LIFE_MS;
   const answerDelay = scenario === 'slow' ? SLOW_MS : 0;
+  let phone = '';
 
   return {
     async restore() {
@@ -55,12 +58,12 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
             expires: Date.now() + qrLife,
           });
           timer = setTimeout(emit, qrLife);
-          if (scenario === 'qr-scan' && !scanned) {
+          if ((scenario === 'qr-scan' || scenario === 'qr-password') && !scanned) {
             scanned = true;
             setTimeout(() => {
               if (signal.aborted) return;
               clearTimeout(timer);
-              resolve(LINH);
+              resolve(scenario === 'qr-scan' ? LINH : 'password');
             }, SCAN_AFTER_MS);
           }
         };
@@ -78,16 +81,19 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
     async sendCode(number) {
       await wait(answerDelay);
       if (number === '84999999999') throw new AuthError('bad-phone');
+      phone = number;
       return { length: 5 };
     },
     async submitCode(code) {
       await wait(answerDelay);
       if (code === '00000') throw new AuthError('code-expired');
       if (code !== '12345') throw new AuthError('bad-code');
-      return MINH;
+      return phone === '84900000002' ? 'password' : MINH;
     },
-    async submitPassword() {
-      throw new AuthError('offline');
+    async submitPassword(password) {
+      await wait(answerDelay);
+      if (password !== PASSWORD) throw new AuthError('bad-password');
+      return TUAN;
     },
     async logOut() {},
   };
