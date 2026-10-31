@@ -29,6 +29,16 @@ function isBusy(login: LoginStep): boolean {
   }
 }
 
+// A login one tab is in the middle of; a hello from another tab leaves it as it is.
+function inLogin(login: LoginStep): boolean {
+  return (
+    login.step === 'qr' ||
+    login.step === 'phone' ||
+    login.step === 'code' ||
+    login.step === 'password'
+  );
+}
+
 function kindOf(e: unknown): AuthError['kind'] {
   return e instanceof AuthError ? e.kind : 'offline';
 }
@@ -94,7 +104,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   }
 
   async function hello() {
-    if (checking || isBusy(view.login)) return;
+    if (checking || isBusy(view.login) || inLogin(view.login)) return;
     checking = true;
     try {
       stopQr();

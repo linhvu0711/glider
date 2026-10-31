@@ -1,57 +1,11 @@
 import { browser } from 'wxt/browser';
 import { deviceLabel } from '../lib/device';
 import { servePort } from '../lib/login/connection';
-import { createLoginService, type LoginService } from '../lib/login/service';
-import type { LoginView } from '../lib/login/state';
+import { createHost } from '../lib/login/host';
+import { createLoginService } from '../lib/login/service';
 import { telegramConfig } from '../lib/telegram/config';
 import { createFakeAuth, fakeSession, isFakeScenario } from '../lib/telegram/fake';
 import { createMtcuteAuth } from '../lib/telegram/mtcute';
-
-type Started = { service: LoginService; unsubscribe: () => void };
-
-// One login service for all open settings tabs, so two tabs never run two QR logins.
-// A hello with `fake` (fake builds only) swaps in a new service with a new fake.
-function createHost(load: (fake?: string) => Promise<LoginService>): LoginService {
-  const listeners = new Set<(view: LoginView) => void>();
-
-  function start(fake?: string): Promise<Started> {
-    return load(fake).then((service) => ({
-      service,
-      unsubscribe: service.subscribe((view) => {
-        for (const listener of listeners) listener(view);
-      }),
-    }));
-  }
-
-  let current = start();
-
-  return {
-    send(command) {
-      if (
-        import.meta.env.WXT_TELEGRAM === 'fake' &&
-        command.type === 'hello' &&
-        command.fake !== undefined
-      ) {
-        const old = current;
-        current = start(command.fake);
-        void old.then(({ service, unsubscribe }) => {
-          unsubscribe();
-          service.stop();
-        });
-      }
-      void current.then(({ service }) => service.send(command));
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    stop() {
-      void current.then(({ service }) => service.stop());
-    },
-  };
-}
 
 export default defineBackground({
   type: 'module',
@@ -74,7 +28,7 @@ export default defineBackground({
         browser.runtime.getManifest().version,
       );
       return createLoginService(auth, device);
-    });
+    }, { fake: import.meta.env.WXT_TELEGRAM === 'fake' });
 
     let ports = 0;
     browser.runtime.onConnect.addListener((port) => {

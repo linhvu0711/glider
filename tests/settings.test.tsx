@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { connectInMemory } from '../lib/login/connection';
+import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
 import { createFakeAuth, type FakeScenario } from '../lib/telegram/fake';
@@ -640,5 +641,45 @@ describe('QR expiry', () => {
     // Then
     expect(qrBox().querySelector('svg')).toBeTruthy();
     expect(screen.getByText('New code in 0:02')).toBeTruthy();
+  });
+});
+
+describe('two tabs', () => {
+  test('a second tab keeps the phone step of the first tab', async () => {
+    // Given: tab 1 on the phone step
+    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
+    const tab1 = connectInMemory(service);
+    const views: LoginView[] = [];
+    tab1.subscribe((view) => views.push(view));
+    tab1.send({ type: 'hello' });
+    await advance(0);
+    tab1.send({ type: 'usePhone' });
+    // When: tab 2 opens and says hello
+    const tab2 = connectInMemory(service);
+    tab2.subscribe(() => {});
+    tab2.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    expect(views.at(-1)?.login.step).toBe('phone');
+  });
+
+  test('a tab that opens late gets the same QR code at once', async () => {
+    // Given: tab 1 shows the first QR code
+    const host = createHost(
+      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
+      { fake: false },
+    );
+    host.subscribe(() => {});
+    host.send({ type: 'hello' });
+    await advance(0);
+    // When: tab 2 connects and says hello
+    const views: LoginView[] = [];
+    host.subscribe((view) => views.push(view));
+    host.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    expect(views.map((v) => (v.login.step === 'qr' ? v.login.code?.url : v.login.step))).toEqual([
+      'tg://login?token=fake-1',
+    ]);
   });
 });
