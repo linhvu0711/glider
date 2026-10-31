@@ -553,6 +553,17 @@ describe('log out', () => {
     expect(fullText('Point your phone at this code.')).toBeTruthy();
   });
 
+  test('stays logged out after log out', async () => {
+    // Given: logged in as Linh Vu with qr-scan, the dialog open
+    const user = setupUser();
+    await loggedInAsLinh(user);
+    // When: click Log out in the dialog, then wait past the fake's scan delay
+    await user.click(dialog().getByRole('button', { name: 'Log out' }));
+    await advance(5_000);
+    // Then
+    expect(within(screen.getByRole('banner')).getByText('Not logged in')).toBeTruthy();
+  });
+
   test('keeps the dialog open when Telegram cannot be reached', async () => {
     // Given: logged in, then the fake set to offline, the dialog open
     const user = setupUser();

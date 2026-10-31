@@ -51,6 +51,8 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
   let tokenCount = 0;
   let phone = '';
   let restores = 0;
+  // One scan per fake, like one phone: a QR login after a log out waits like a real one.
+  let scanned = false;
 
   async function respond() {
     if (scenario === 'offline') {
@@ -79,7 +81,6 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
       return new Promise<Account | 'password'>((resolve, reject) => {
         const life = scenario === 'qr-expire' ? QR_EXPIRE_LIFE_MS : QR_LIFE_MS;
         let timer: ReturnType<typeof setTimeout>;
-        let scanned = false;
         const emit = () => {
           tokenCount += 1;
           onCode({
