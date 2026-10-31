@@ -26,7 +26,8 @@ export function isFakeScenario(value: string | undefined): value is FakeScenario
 
 export type FakeAuth = TelegramAuth & { setScenario(scenario: FakeScenario): void };
 
-export const fakeSession = storage.defineItem<Account | null>('local:fakeSession', {
+// Pure, so the real build drops it with the rest of the fake.
+export const fakeSession = /* @__PURE__ */ storage.defineItem<Account | null>('local:fakeSession', {
   fallback: null,
 });
 
