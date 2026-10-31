@@ -423,3 +423,24 @@ body {
 .button-red:hover:not(:disabled) {
   background: var(--red);
 }
+
+.offline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.offline-icon {
+  flex: none;
+  color: var(--red);
+}
+
+.offline-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.offline .button {
+  margin-left: auto;
+}

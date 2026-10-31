@@ -566,3 +566,41 @@ describe('log out', () => {
     expect(within(screen.getByRole('banner')).getByText('Linh Vu')).toBeTruthy();
   });
 });
+
+describe('no internet', () => {
+  const OFFLINE_TEXT = "Telegram can't be reached. Check your internet connection.";
+
+  test('says Telegram cannot be reached when the first code does not come', async () => {
+    // Given: fake scenario offline
+    // When: render, advance 2 s
+    renderApp('offline');
+    await advance(2_000);
+    // Then
+    expect(screen.getByText(OFFLINE_TEXT)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  test('says Telegram cannot be reached when the session check times out', async () => {
+    // Given: fake saved session Minh Anh, scenario offline
+    await storage.setItem('local:fakeSession', { name: 'Minh Anh', initials: 'MA' });
+    // When: render, advance 2 s
+    renderApp('offline');
+    await advance(2_000);
+    // Then
+    expect(screen.getByText(OFFLINE_TEXT)).toBeTruthy();
+  });
+
+  test('Try again starts over', async () => {
+    // Given: on the offline step, then the fake set to default
+    const user = setupUser();
+    const { auth } = renderApp('offline');
+    await advance(2_000);
+    auth.setScenario('default');
+    // When: click Try again, let the first code arrive
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await advance(0);
+    // Then
+    expect(fullText('Point your phone at this code.')).toBeTruthy();
+    expect(qrBox().querySelector('svg')).toBeTruthy();
+  });
+});

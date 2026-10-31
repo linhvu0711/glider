@@ -181,6 +181,17 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
       )}
       {login.step === 'code' && <CodeStep login={login} send={send} />}
       {login.step === 'password' && <PasswordStep login={login} send={send} />}
+      {login.step === 'offline' && (
+        <div className="offline">
+          <AlertIcon className="offline-icon" width={20} height={20} />
+          <p className="offline-text">
+            Telegram can&apos;t be reached. Check your internet connection.
+          </p>
+          <button type="button" className="button" onClick={() => send({ type: 'retry' })}>
+            Try again
+          </button>
+        </div>
+      )}
       {login.step === 'done' && (
         <div className="account-row">
           <Avatar account={login.account} size={40} />

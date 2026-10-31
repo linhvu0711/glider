@@ -76,7 +76,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
           if (result === 'password') show({ step: 'password', error: null, busy: false });
           else done(result);
         },
-        () => {},
+        (e) => {
+          if (!controller.signal.aborted && kindOf(e) === 'offline') show({ step: 'offline' });
+        },
       );
   }
 
@@ -90,8 +92,12 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       if (account === null) startQr();
       else done(account);
     } catch (e) {
-      if (kindOf(e) === 'session-ended') await setNotice(true);
-      startQr();
+      if (kindOf(e) === 'session-ended') {
+        await setNotice(true);
+        startQr();
+      } else {
+        show({ step: 'offline' });
+      }
     } finally {
       checking = false;
     }
@@ -110,6 +116,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       show({ step: 'code', phone, length, error: null, busy: false });
     } catch (e) {
       if (kindOf(e) === 'bad-phone') show({ step: 'phone', error: 'bad-phone', busy: false });
+      else show({ step: 'offline' });
     }
   }
 
@@ -124,7 +131,8 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     } catch (e) {
       const kind = kindOf(e);
       if (kind === 'bad-code') show({ ...current, error: 'wrong', busy: false });
-      if (kind === 'code-expired') show({ ...current, error: 'expired', busy: false });
+      else if (kind === 'code-expired') show({ ...current, error: 'expired', busy: false });
+      else show({ step: 'offline' });
     }
   }
 
@@ -135,6 +143,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       done(await auth.submitPassword(password));
     } catch (e) {
       if (kindOf(e) === 'bad-password') show({ step: 'password', error: 'wrong', busy: false });
+      else show({ step: 'offline' });
     }
   }
 
@@ -168,6 +177,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
           break;
         case 'logOut':
           void logOut();
+          break;
+        case 'retry':
+          void hello();
           break;
         case 'dismissNotice':
           void setNotice(false);

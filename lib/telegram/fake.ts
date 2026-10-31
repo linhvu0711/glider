@@ -70,6 +70,7 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
     },
     async restore() {
       restores += 1;
+      if (scenario === 'offline') await respond();
       if (scenario === 'revoked' && restores === 1) throw new AuthError('session-ended');
       return fakeSession.getValue();
     },
@@ -103,7 +104,11 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
           },
           { once: true },
         );
-        timer = setTimeout(emit, scenario === 'slow' ? SLOW_MS : 0);
+        if (scenario === 'offline') {
+          timer = setTimeout(() => reject(new AuthError('offline')), OFFLINE_MS);
+        } else {
+          timer = setTimeout(emit, scenario === 'slow' ? SLOW_MS : 0);
+        }
       });
     },
     async sendCode(number) {
