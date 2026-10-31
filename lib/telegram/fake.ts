@@ -24,6 +24,8 @@ export function isFakeScenario(value: string | undefined): value is FakeScenario
   return FAKE_SCENARIOS.includes(value as FakeScenario);
 }
 
+export type FakeAuth = TelegramAuth & { setScenario(scenario: FakeScenario): void };
+
 export const fakeSession = storage.defineItem<Account | null>('local:fakeSession', {
   fallback: null,
 });
@@ -31,6 +33,7 @@ export const fakeSession = storage.defineItem<Account | null>('local:fakeSession
 const QR_LIFE_MS = 30_000;
 const QR_EXPIRE_LIFE_MS = 2_000;
 const SLOW_MS = 5_000;
+const OFFLINE_MS = 1_000;
 const SCAN_AFTER_MS = 3_000;
 
 const LINH: Account = { name: 'Linh Vu', initials: 'LV' };
@@ -42,12 +45,19 @@ function wait(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
-export function createFakeAuth({ scenario }: { scenario: FakeScenario }): TelegramAuth {
+export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
+  let scenario = options.scenario;
   let tokenCount = 0;
-  const qrLife = scenario === 'qr-expire' ? QR_EXPIRE_LIFE_MS : QR_LIFE_MS;
-  const answerDelay = scenario === 'slow' ? SLOW_MS : 0;
   let phone = '';
   let restores = 0;
+
+  async function respond() {
+    if (scenario === 'offline') {
+      await wait(OFFLINE_MS);
+      throw new AuthError('offline');
+    }
+    await wait(scenario === 'slow' ? SLOW_MS : 0);
+  }
 
   async function logIn(account: Account) {
     await fakeSession.setValue(account);
@@ -55,6 +65,9 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
   }
 
   return {
+    setScenario(next) {
+      scenario = next;
+    },
     async restore() {
       restores += 1;
       if (scenario === 'revoked' && restores === 1) throw new AuthError('session-ended');
@@ -62,15 +75,16 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
     },
     loginQr(onCode: (code: QrCode) => void, signal: AbortSignal) {
       return new Promise<Account | 'password'>((resolve, reject) => {
+        const life = scenario === 'qr-expire' ? QR_EXPIRE_LIFE_MS : QR_LIFE_MS;
         let timer: ReturnType<typeof setTimeout>;
         let scanned = false;
         const emit = () => {
           tokenCount += 1;
           onCode({
             url: `tg://login?token=fake-${tokenCount}`,
-            expires: Date.now() + qrLife,
+            expires: Date.now() + life,
           });
-          timer = setTimeout(emit, qrLife);
+          timer = setTimeout(emit, life);
           if ((scenario === 'qr-scan' || scenario === 'qr-password') && !scanned) {
             scanned = true;
             setTimeout(() => {
@@ -89,26 +103,29 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
           },
           { once: true },
         );
-        timer = setTimeout(emit, answerDelay);
+        timer = setTimeout(emit, scenario === 'slow' ? SLOW_MS : 0);
       });
     },
     async sendCode(number) {
-      await wait(answerDelay);
+      await respond();
       if (number === '84999999999') throw new AuthError('bad-phone');
       phone = number;
       return { length: 5 };
     },
     async submitCode(code) {
-      await wait(answerDelay);
+      await respond();
       if (code === '00000') throw new AuthError('code-expired');
       if (code !== '12345') throw new AuthError('bad-code');
       return phone === '84900000002' ? 'password' : logIn(MINH);
     },
     async submitPassword(password) {
-      await wait(answerDelay);
+      await respond();
       if (password !== PASSWORD) throw new AuthError('bad-password');
       return logIn(TUAN);
     },
-    async logOut() {},
+    async logOut() {
+      await respond();
+      await fakeSession.setValue(null);
+    },
   };
 }

@@ -48,8 +48,74 @@ export default function App({ connection }: { connection?: LoginConnection }) {
         <span>
           Glider sends from your own Telegram account. Your login stays on this computer.
         </span>
+        {view?.login.step === 'done' && connection && (
+          <LogOut logout={view.login.logout} send={connection.send} />
+        )}
       </footer>
     </div>
+  );
+}
+
+function LogOut({ logout, send }: { logout: 'idle' | 'busy' | 'offline'; send: Send }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="link link-red" onClick={() => setOpen(true)}>
+        Log out
+      </button>
+      {open && (
+        <LogoutDialog
+          logout={logout}
+          onCancel={() => setOpen(false)}
+          onConfirm={() => send({ type: 'logOut' })}
+        />
+      )}
+    </>
+  );
+}
+
+function LogoutDialog({
+  logout,
+  onCancel,
+  onConfirm,
+}: {
+  logout: 'idle' | 'busy' | 'offline';
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+    cancel.current?.focus();
+  }, []);
+  const busy = logout === 'busy';
+  return (
+    <dialog
+      ref={dialog}
+      className="dialog"
+      aria-labelledby="logout-title"
+      onClose={onCancel}
+      // The browser closes a modal dialog on Esc by itself; happy-dom does not, so tests need this.
+      onKeyDown={(event) => event.key === 'Escape' && onCancel()}
+    >
+      <h2 className="dialog-title" id="logout-title">
+        Log out of Glider?
+      </h2>
+      <p className="dialog-text">
+        This also ends Glider&apos;s session in Telegram. Links that wait to send are not sent.
+        You can log in again any time.
+      </p>
+      {logout === 'offline' && <p className="error">Telegram can&apos;t be reached. Try again.</p>}
+      <div className="dialog-buttons">
+        <button type="button" ref={cancel} className="button-plain" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="button button-red" disabled={busy} onClick={onConfirm}>
+          {busy ? 'Logging out…' : 'Log out'}
+        </button>
+      </div>
+    </dialog>
   );
 }
 

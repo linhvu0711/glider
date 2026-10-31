@@ -483,3 +483,86 @@ describe('saved session', () => {
     expect(await storage.getItem('local:fakeSession')).toEqual(MINH);
   });
 });
+
+describe('log out', () => {
+  async function loggedInAsLinh(user: User) {
+    const ctx = renderApp('qr-scan');
+    await advance(4_000);
+    await user.click(
+      within(screen.getByRole('contentinfo')).getByRole('button', { name: 'Log out' }),
+    );
+    return ctx;
+  }
+
+  function dialog() {
+    return within(screen.getByRole('dialog'));
+  }
+
+  test('opens the log out dialog', async () => {
+    // Given: logged in as Linh Vu with qr-scan
+    const user = setupUser();
+    // When: click Log out in the footer
+    await loggedInAsLinh(user);
+    // Then
+    expect(dialog().getByRole('heading', { name: 'Log out of Glider?' })).toBeTruthy();
+    expect(
+      dialog().getByText(
+        "This also ends Glider's session in Telegram. Links that wait to send are not sent. You can log in again any time.",
+      ),
+    ).toBeTruthy();
+    expect(dialog().getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(dialog().getByRole('button', { name: 'Log out' })).toBeTruthy();
+  });
+
+  test('Cancel closes the dialog and stays logged in', async () => {
+    // Given: the dialog open
+    const user = setupUser();
+    const { auth } = await loggedInAsLinh(user);
+    const logOut = vi.spyOn(auth, 'logOut');
+    // When: click Cancel
+    await user.click(dialog().getByRole('button', { name: 'Cancel' }));
+    // Then
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(screen.getByRole('banner')).getByText('Linh Vu')).toBeTruthy();
+    expect(logOut).toHaveBeenCalledTimes(0);
+  });
+
+  test('Esc closes the dialog', async () => {
+    // Given: the dialog open
+    const user = setupUser();
+    await loggedInAsLinh(user);
+    // When: press Escape
+    await user.keyboard('{Escape}');
+    // Then
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(screen.getByRole('banner')).getByText('Linh Vu')).toBeTruthy();
+  });
+
+  test('Log out ends the session and shows the QR step', async () => {
+    // Given: the dialog open
+    const user = setupUser();
+    const { auth } = await loggedInAsLinh(user);
+    const logOut = vi.spyOn(auth, 'logOut');
+    // When: click Log out in the dialog
+    await user.click(dialog().getByRole('button', { name: 'Log out' }));
+    await advance(0);
+    // Then
+    expect(logOut).toHaveBeenCalledTimes(1);
+    expect(await storage.getItem('local:fakeSession')).toBeNull();
+    expect(within(screen.getByRole('banner')).getByText('Not logged in')).toBeTruthy();
+    expect(fullText('Point your phone at this code.')).toBeTruthy();
+  });
+
+  test('keeps the dialog open when Telegram cannot be reached', async () => {
+    // Given: logged in, then the fake set to offline, the dialog open
+    const user = setupUser();
+    const { auth } = await loggedInAsLinh(user);
+    auth.setScenario('offline');
+    // When: click Log out in the dialog
+    await user.click(dialog().getByRole('button', { name: 'Log out' }));
+    await advance(1_000);
+    // Then
+    expect(dialog().getByText("Telegram can't be reached. Try again.")).toBeTruthy();
+    expect(within(screen.getByRole('banner')).getByText('Linh Vu')).toBeTruthy();
+  });
+});

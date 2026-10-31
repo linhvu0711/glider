@@ -19,6 +19,8 @@ function isBusy(login: LoginStep): boolean {
     case 'code':
     case 'password':
       return login.busy;
+    case 'done':
+      return login.logout === 'busy';
     default:
       return false;
   }
@@ -136,6 +138,18 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     }
   }
 
+  async function logOut() {
+    const current = view.login;
+    if (current.step !== 'done') return;
+    show({ ...current, logout: 'busy' });
+    try {
+      await auth.logOut();
+      startQr();
+    } catch (e) {
+      if (kindOf(e) === 'offline') show({ ...current, logout: 'offline' });
+    }
+  }
+
   return {
     send(command) {
       if (command.type === 'hello') return void hello();
@@ -151,6 +165,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
         case 'useQr':
         case 'newQr':
           startQr();
+          break;
+        case 'logOut':
+          void logOut();
           break;
         case 'dismissNotice':
           void setNotice(false);
