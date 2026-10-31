@@ -68,3 +68,114 @@ body {
   font-size: 13px;
   color: var(--text-3);
 }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.muted {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.qr-step {
+  display: flex;
+  gap: 24px;
+}
+
+.qr-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 200px;
+  height: 200px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.qr-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.qr-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.qr-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.countdown {
+  margin: 0;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
