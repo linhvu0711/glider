@@ -682,4 +682,26 @@ describe('two tabs', () => {
       'tg://login?token=fake-1',
     ]);
   });
+
+  test('a tab that opens after every tab closed gets a new QR code', async () => {
+    // Given: one tab saw the first QR code, then every tab closed
+    const host = createHost(
+      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
+      { fake: false },
+    );
+    const unsubscribe = host.subscribe(() => {});
+    host.send({ type: 'hello' });
+    await advance(0);
+    unsubscribe();
+    host.stop();
+    await advance(0);
+    // When: a new tab connects and says hello
+    const views: LoginView[] = [];
+    host.subscribe((view) => views.push(view));
+    host.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    const last = views.at(-1)?.login;
+    expect(last?.step === 'qr' ? last.code?.url : last?.step).toBe('tg://login?token=fake-2');
+  });
 });

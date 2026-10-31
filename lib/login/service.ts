@@ -228,6 +228,8 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     },
     stop() {
       stopQr();
+      // Nothing waits on that QR code now, so the next hello must get a new one.
+      if (view.login.step === 'qr') show({ step: 'checking' });
     },
   };
 }
