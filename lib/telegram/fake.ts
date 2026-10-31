@@ -29,6 +29,11 @@ const SLOW_MS = 5_000;
 const SCAN_AFTER_MS = 3_000;
 
 const LINH: Account = { name: 'Linh Vu', initials: 'LV' };
+const MINH: Account = { name: 'Minh Anh', initials: 'MA' };
+
+function wait(ms: number): Promise<void> {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+}
 
 export function createFakeAuth({ scenario }: { scenario: FakeScenario }): TelegramAuth {
   let tokenCount = 0;
@@ -70,11 +75,16 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
         timer = setTimeout(emit, answerDelay);
       });
     },
-    async sendCode() {
-      throw new AuthError('offline');
+    async sendCode(number) {
+      await wait(answerDelay);
+      if (number === '84999999999') throw new AuthError('bad-phone');
+      return { length: 5 };
     },
-    async submitCode() {
-      throw new AuthError('offline');
+    async submitCode(code) {
+      await wait(answerDelay);
+      if (code === '00000') throw new AuthError('code-expired');
+      if (code !== '12345') throw new AuthError('bad-code');
+      return MINH;
     },
     async submitPassword() {
       throw new AuthError('offline');

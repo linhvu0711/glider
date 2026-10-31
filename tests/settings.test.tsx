@@ -1,4 +1,5 @@
 import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../entrypoints/options/App';
 import { connectInMemory } from '../lib/login/connection';
@@ -24,6 +25,33 @@ function renderApp(scenario: FakeScenario, device = 'Chromium on Linux') {
   const service = createLoginService(auth, device);
   render(<App connection={connectInMemory(service)} />);
   return { auth, service };
+}
+
+function setupUser() {
+  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+}
+
+type User = ReturnType<typeof setupUser>;
+
+async function openPhoneStep(user: User) {
+  await user.click(screen.getByRole('button', { name: 'Log in with phone number instead' }));
+}
+
+async function toCodeStep(
+  user: User,
+  { scenario = 'default', number = '912 345 678' }: { scenario?: FakeScenario; number?: string } = {},
+) {
+  const ctx = renderApp(scenario);
+  await advance(0);
+  await openPhoneStep(user);
+  await user.type(screen.getByLabelText('Phone number'), number);
+  await user.click(screen.getByRole('button', { name: 'Send code' }));
+  await advance(scenario === 'slow' ? 5_000 : 0);
+  return ctx;
+}
+
+function digit(n: number) {
+  return screen.getByLabelText(`Digit ${n}`) as HTMLInputElement;
 }
 
 function fullText(text: string) {
@@ -122,5 +150,164 @@ describe('logged in', () => {
     const header = within(screen.getByRole('banner'));
     expect(header.getByText('Linh Vu')).toBeTruthy();
     expect(header.queryByText('Not logged in')).toBeNull();
+  });
+});
+
+describe('phone login', () => {
+  test('shows the phone field with +84 and the hint', async () => {
+    // Given: fake scenario default
+    const user = setupUser();
+    renderApp('default');
+    await advance(0);
+    // When: click Log in with phone number instead
+    await openPhoneStep(user);
+    // Then
+    expect((screen.getByLabelText('Country code') as HTMLInputElement).value).toBe('+84');
+    expect((screen.getByLabelText('Phone number') as HTMLInputElement).value).toBe('');
+    expect(screen.getByText('Enter your full phone number, like 912 345 678.')).toBeTruthy();
+  });
+
+  test('says the number is too short and sends no code', async () => {
+    // Given: as above, a spy on the fake's sendCode
+    const user = setupUser();
+    const { auth } = renderApp('default');
+    const sendCode = vi.spyOn(auth, 'sendCode');
+    await advance(0);
+    await openPhoneStep(user);
+    // When: type 12 in Phone number, click Send code
+    await user.type(screen.getByLabelText('Phone number'), '12');
+    await user.click(screen.getByRole('button', { name: 'Send code' }));
+    await advance(0);
+    // Then
+    expect(screen.getByText('This number is too short.')).toBeTruthy();
+    expect(sendCode).toHaveBeenCalledTimes(0);
+    expect(screen.getByLabelText('Phone number')).toBeTruthy();
+  });
+
+  test("shows Telegram's no for a number it does not know", async () => {
+    // Given: as above
+    const user = setupUser();
+    renderApp('default');
+    await advance(0);
+    await openPhoneStep(user);
+    // When: type 999999999, click Send code
+    await user.type(screen.getByLabelText('Phone number'), '999999999');
+    await user.click(screen.getByRole('button', { name: 'Send code' }));
+    await advance(0);
+    // Then
+    expect(
+      screen.getByText('Telegram does not know this number. Check it and try again.'),
+    ).toBeTruthy();
+  });
+
+  test('sends the code and shows 5 boxes', async () => {
+    // Given: as above
+    const user = setupUser();
+    renderApp('default');
+    await advance(0);
+    await openPhoneStep(user);
+    // When: type 912 345 678, click Send code
+    await user.type(screen.getByLabelText('Phone number'), '912 345 678');
+    await user.click(screen.getByRole('button', { name: 'Send code' }));
+    await advance(0);
+    // Then
+    expect(screen.getByText('Enter the code sent to your Telegram app')).toBeTruthy();
+    expect(screen.getByText('Sent to +84912345678.')).toBeTruthy();
+    expect([1, 2, 3, 4, 5].map((n) => digit(n).tagName)).toEqual(Array(5).fill('INPUT'));
+    expect(screen.queryByLabelText('Digit 6')).toBeNull();
+  });
+
+  test('moves to the next box after each digit', async () => {
+    // Given: on the code step
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: type 1, then 2
+    await user.keyboard('1');
+    await user.keyboard('2');
+    // Then
+    expect(digit(1).value).toBe('1');
+    expect(digit(2).value).toBe('2');
+    expect(document.activeElement).toBe(digit(3));
+  });
+
+  test('says the code is wrong', async () => {
+    // Given: on the code step
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: type 22222
+    await user.keyboard('22222');
+    await advance(0);
+    // Then
+    expect(
+      screen.getByText(
+        'That code is wrong. Check the newest message from Telegram and try again.',
+      ),
+    ).toBeTruthy();
+    expect([1, 2, 3, 4, 5].map((n) => digit(n).value)).toEqual(['', '', '', '', '']);
+    expect(document.activeElement).toBe(digit(1));
+  });
+
+  test('says the code expired', async () => {
+    // Given: on the code step
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: type 00000
+    await user.keyboard('00000');
+    await advance(0);
+    // Then
+    expect(screen.getByText('That code expired.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send a new code' })).toBeTruthy();
+  });
+
+  test('logs in with the right code', async () => {
+    // Given: on the code step for 912 345 678
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: type 12345
+    await user.keyboard('12345');
+    await advance(0);
+    // Then
+    const card = within(screen.getByRole('region', { name: 'Log in to Telegram' }));
+    expect(card.getByText('Done')).toBeTruthy();
+    expect(card.getByText('Minh Anh')).toBeTruthy();
+  });
+
+  test('shows Logging in and sends the code once', async () => {
+    // Given: fake scenario slow (every answer after 5 s), on the code step, a spy on the fake's submitCode
+    const user = setupUser();
+    const { auth } = await toCodeStep(user, { scenario: 'slow' });
+    const submitCode = vi.spyOn(auth, 'submitCode');
+    // When: type 12345, click Log in, click Log in
+    await user.keyboard('12345');
+    await user.click(screen.getByRole('button', { name: 'Logging in…' }));
+    await user.click(screen.getByRole('button', { name: 'Logging in…' }));
+    // Then
+    const button = screen.getByRole('button', { name: 'Logging in…' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(submitCode).toHaveBeenCalledTimes(1);
+  });
+
+  test('Change number goes back to the phone field', async () => {
+    // Given: on the code step
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: click Change number
+    await user.click(screen.getByRole('button', { name: 'Change number' }));
+    // Then
+    expect((screen.getByLabelText('Phone number') as HTMLInputElement).value).toBe(
+      '912 345 678',
+    );
+  });
+
+  test('Use QR code instead goes back to the QR', async () => {
+    // Given: on the code step
+    const user = setupUser();
+    await toCodeStep(user);
+    // When: click Use QR code instead
+    await user.click(screen.getByRole('button', { name: 'Use QR code instead' }));
+    await advance(0);
+    // Then
+    expect(fullText('Point your phone at this code.')).toBeTruthy();
+    expect(qrBox().querySelector('svg')).toBeTruthy();
   });
 });

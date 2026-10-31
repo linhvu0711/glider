@@ -1,10 +1,25 @@
-import type { TelegramAuth } from '../telegram/auth';
+import { AuthError, type Account, type TelegramAuth } from '../telegram/auth';
 import type { LoginCommand, LoginStep, LoginView } from './state';
 
 export interface LoginService {
   send(command: LoginCommand): void;
   subscribe(listener: (view: LoginView) => void): () => void;
   stop(): void;
+}
+
+function isBusy(login: LoginStep): boolean {
+  switch (login.step) {
+    case 'phone':
+    case 'code':
+    case 'password':
+      return login.busy;
+    default:
+      return false;
+  }
+}
+
+function kindOf(e: unknown): AuthError['kind'] {
+  return e instanceof AuthError ? e.kind : 'offline';
 }
 
 export function createLoginService(auth: TelegramAuth, device: string): LoginService {
@@ -17,8 +32,17 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     for (const listener of listeners) listener(view);
   }
 
-  function startQr() {
+  function stopQr() {
     qr?.abort();
+    qr = null;
+  }
+
+  function done(account: Account) {
+    show({ step: 'done', account, device, logout: 'idle' });
+  }
+
+  function startQr() {
+    stopQr();
     const controller = new AbortController();
     qr = controller;
     show({ step: 'qr', code: null, expired: false });
@@ -29,7 +53,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       .then(
         (result) => {
           if (controller.signal.aborted || result === 'password') return;
-          show({ step: 'done', account: result, device, logout: 'idle' });
+          done(result);
         },
         () => {},
       );
@@ -40,9 +64,62 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     if (account === null) startQr();
   }
 
+  async function sendCode(phone: string) {
+    const current = view.login;
+    if (current.step !== 'phone' && current.step !== 'code') return;
+    show(
+      current.step === 'phone'
+        ? { step: 'phone', error: null, busy: true }
+        : { ...current, error: null, busy: true },
+    );
+    try {
+      const { length } = await auth.sendCode(phone);
+      show({ step: 'code', phone, length, error: null, busy: false });
+    } catch (e) {
+      if (kindOf(e) === 'bad-phone') show({ step: 'phone', error: 'bad-phone', busy: false });
+    }
+  }
+
+  async function submitCode(code: string) {
+    const current = view.login;
+    if (current.step !== 'code') return;
+    show({ ...current, error: null, busy: true });
+    try {
+      const result = await auth.submitCode(code);
+      if (result === 'password') show({ step: 'password', error: null, busy: false });
+      else done(result);
+    } catch (e) {
+      const kind = kindOf(e);
+      if (kind === 'bad-code') show({ ...current, error: 'wrong', busy: false });
+      if (kind === 'code-expired') show({ ...current, error: 'expired', busy: false });
+    }
+  }
+
   return {
     send(command) {
-      if (command.type === 'hello') void hello();
+      if (command.type === 'hello') return void hello();
+      if (command.type === 'ping' || isBusy(view.login)) return;
+      switch (command.type) {
+        case 'usePhone':
+          stopQr();
+          show({ step: 'phone', error: null, busy: false });
+          break;
+        case 'changeNumber':
+          show({ step: 'phone', error: null, busy: false });
+          break;
+        case 'useQr':
+          startQr();
+          break;
+        case 'sendCode':
+          void sendCode(command.phone);
+          break;
+        case 'resendCode':
+          if (view.login.step === 'code') void sendCode(view.login.phone);
+          break;
+        case 'submitCode':
+          void submitCode(command.code);
+          break;
+      }
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -52,7 +129,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       };
     },
     stop() {
-      qr?.abort();
+      stopQr();
     },
   };
 }

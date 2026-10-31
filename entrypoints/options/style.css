@@ -219,3 +219,92 @@ body {
   font-size: 15px;
   font-weight: 600;
 }
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form p {
+  margin: 0;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.prompt {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.phone-row,
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.input-country {
+  width: 72px;
+}
+
+.input-grow {
+  width: 240px;
+}
+
+.code-box {
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  text-align: center;
+  font-size: 18px;
+}
+
+.error {
+  font-size: 13px;
+  color: var(--red);
+}
+
+.button {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.links {
+  display: flex;
+  gap: 16px;
+}
