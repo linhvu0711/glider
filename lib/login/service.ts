@@ -1,3 +1,4 @@
+import { storage } from 'wxt/utils/storage';
 import { AuthError, type Account, type TelegramAuth } from '../telegram/auth';
 import type { LoginCommand, LoginStep, LoginView } from './state';
 
@@ -6,6 +7,11 @@ export interface LoginService {
   subscribe(listener: (view: LoginView) => void): () => void;
   stop(): void;
 }
+
+// The service is the only writer of this item.
+const loggedOutNotice = storage.defineItem<boolean>('local:loggedOutNotice', {
+  fallback: false,
+});
 
 function isBusy(login: LoginStep): boolean {
   switch (login.step) {
@@ -27,9 +33,20 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   const listeners = new Set<(view: LoginView) => void>();
   let qr: AbortController | null = null;
 
-  function show(login: LoginStep) {
-    view = { ...view, login };
+  let checking = false;
+
+  function publish(next: LoginView) {
+    view = next;
     for (const listener of listeners) listener(view);
+  }
+
+  function show(login: LoginStep) {
+    publish({ ...view, login });
+  }
+
+  async function setNotice(notice: boolean) {
+    await loggedOutNotice.setValue(notice);
+    if (view.notice !== notice) publish({ ...view, notice });
   }
 
   function stopQr() {
@@ -38,6 +55,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   }
 
   function done(account: Account) {
+    void setNotice(false);
     show({ step: 'done', account, device, logout: 'idle' });
   }
 
@@ -61,8 +79,20 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   }
 
   async function hello() {
-    const account = await auth.restore().catch(() => null);
-    if (account === null) startQr();
+    if (checking || isBusy(view.login)) return;
+    checking = true;
+    try {
+      stopQr();
+      publish({ login: { step: 'checking' }, notice: await loggedOutNotice.getValue() });
+      const account = await auth.restore();
+      if (account === null) startQr();
+      else done(account);
+    } catch (e) {
+      if (kindOf(e) === 'session-ended') await setNotice(true);
+      startQr();
+    } finally {
+      checking = false;
+    }
   }
 
   async function sendCode(phone: string) {
@@ -119,7 +149,11 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
           show({ step: 'phone', error: null, busy: false });
           break;
         case 'useQr':
+        case 'newQr':
           startQr();
+          break;
+        case 'dismissNotice':
+          void setNotice(false);
           break;
         case 'sendCode':
           void sendCode(command.phone);

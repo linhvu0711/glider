@@ -6,7 +6,7 @@ import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
-import { CheckIcon, EyeIcon, EyeOffIcon } from '../../components/icons';
+import { AlertIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../../components/icons';
 
 function useLoginView(connection: LoginConnection | undefined): LoginView | null {
   const [view, setView] = useState<LoginView | null>(null);
@@ -38,12 +38,36 @@ export default function App({ connection }: { connection?: LoginConnection }) {
           )}
         </span>
       </header>
-      {view && connection && <LoginCard login={view.login} send={connection.send} />}
+      {view && connection && (
+        <>
+          {view.notice && <LoggedOutBanner send={connection.send} />}
+          <LoginCard login={view.login} send={connection.send} />
+        </>
+      )}
       <footer className="footer">
         <span>
           Glider sends from your own Telegram account. Your login stays on this computer.
         </span>
       </footer>
+    </div>
+  );
+}
+
+function LoggedOutBanner({ send }: { send: Send }) {
+  return (
+    <div className="card banner" role="status">
+      <AlertIcon className="banner-icon" width={20} height={20} />
+      <span className="banner-text">You were logged out.</span>
+      <button
+        type="button"
+        className="link"
+        onClick={() => {
+          send({ type: 'dismissNotice' });
+          send({ type: 'newQr' });
+        }}
+      >
+        Log in again
+      </button>
     </div>
   );
 }
@@ -78,9 +102,8 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
           </span>
         )}
       </div>
-      {(login.step === 'checking' || login.step === 'qr') && (
-        <QrStep code={login.step === 'qr' ? login.code : null} send={send} />
-      )}
+      {login.step === 'checking' && <QrStep checking code={null} send={send} />}
+      {login.step === 'qr' && <QrStep code={login.code} send={send} />}
       {login.step === 'phone' && (
         <PhoneStep
           draft={draft}
@@ -105,7 +128,15 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
   );
 }
 
-function QrStep({ code, send }: { code: QrCode | null; send: Send }) {
+function QrStep({
+  code,
+  checking = false,
+  send,
+}: {
+  code: QrCode | null;
+  checking?: boolean;
+  send: Send;
+}) {
   return (
     <div className="qr-step">
       <div className="qr-box" role="group" aria-label="QR code">
@@ -120,10 +151,11 @@ function QrStep({ code, send }: { code: QrCode | null; send: Send }) {
         ) : (
           <div className="qr-loading">
             <span className="spinner" />
-            <span className="muted">Getting a code…</span>
+            <span className="muted">{checking ? 'Checking your login…' : 'Getting a code…'}</span>
           </div>
         )}
       </div>
+      {!checking && (
       <div className="qr-side">
         <ol className="qr-steps">
           <li>Open Telegram on your phone.</li>
@@ -137,6 +169,7 @@ function QrStep({ code, send }: { code: QrCode | null; send: Send }) {
           Log in with phone number instead
         </button>
       </div>
+      )}
     </div>
   );
 }

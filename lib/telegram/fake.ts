@@ -1,3 +1,4 @@
+import { storage } from 'wxt/utils/storage';
 import { AuthError, type Account, type QrCode, type TelegramAuth } from './auth';
 
 export type FakeScenario =
@@ -23,6 +24,10 @@ export function isFakeScenario(value: string | undefined): value is FakeScenario
   return FAKE_SCENARIOS.includes(value as FakeScenario);
 }
 
+export const fakeSession = storage.defineItem<Account | null>('local:fakeSession', {
+  fallback: null,
+});
+
 const QR_LIFE_MS = 30_000;
 const QR_EXPIRE_LIFE_MS = 2_000;
 const SLOW_MS = 5_000;
@@ -42,10 +47,18 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
   const qrLife = scenario === 'qr-expire' ? QR_EXPIRE_LIFE_MS : QR_LIFE_MS;
   const answerDelay = scenario === 'slow' ? SLOW_MS : 0;
   let phone = '';
+  let restores = 0;
+
+  async function logIn(account: Account) {
+    await fakeSession.setValue(account);
+    return account;
+  }
 
   return {
     async restore() {
-      return null;
+      restores += 1;
+      if (scenario === 'revoked' && restores === 1) throw new AuthError('session-ended');
+      return fakeSession.getValue();
     },
     loginQr(onCode: (code: QrCode) => void, signal: AbortSignal) {
       return new Promise<Account | 'password'>((resolve, reject) => {
@@ -63,7 +76,8 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
             setTimeout(() => {
               if (signal.aborted) return;
               clearTimeout(timer);
-              resolve(scenario === 'qr-scan' ? LINH : 'password');
+              if (scenario === 'qr-scan') void logIn(LINH).then(resolve);
+              else resolve('password');
             }, SCAN_AFTER_MS);
           }
         };
@@ -88,12 +102,12 @@ export function createFakeAuth({ scenario }: { scenario: FakeScenario }): Telegr
       await wait(answerDelay);
       if (code === '00000') throw new AuthError('code-expired');
       if (code !== '12345') throw new AuthError('bad-code');
-      return phone === '84900000002' ? 'password' : MINH;
+      return phone === '84900000002' ? 'password' : logIn(MINH);
     },
     async submitPassword(password) {
       await wait(answerDelay);
       if (password !== PASSWORD) throw new AuthError('bad-password');
-      return TUAN;
+      return logIn(TUAN);
     },
     async logOut() {},
   };

@@ -1,9 +1,11 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { connectInMemory } from '../lib/login/connection';
 import { createLoginService } from '../lib/login/service';
+import type { LoginView } from '../lib/login/state';
 import { createFakeAuth, type FakeScenario } from '../lib/telegram/fake';
 
 beforeEach(() => {
@@ -401,5 +403,83 @@ describe('2-step password', () => {
     const button = screen.getByRole('button', { name: 'Logging in…' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(submitPassword).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('saved session', () => {
+  const MINH = { name: 'Minh Anh', initials: 'MA' };
+
+  test('shows the account row when a saved session is still good', async () => {
+    // Given: fake saved session Minh Anh, scenario default
+    await storage.setItem('local:fakeSession', MINH);
+    // When: render a new <App> with a new service and a new fake
+    const { auth } = renderApp('default');
+    const sendCode = vi.spyOn(auth, 'sendCode');
+    const loginQr = vi.spyOn(auth, 'loginQr');
+    await advance(0);
+    // Then
+    const card = within(screen.getByRole('region', { name: 'Log in to Telegram' }));
+    expect(card.getByText('Done')).toBeTruthy();
+    expect(card.getByText('Minh Anh')).toBeTruthy();
+    expect(document.querySelector('svg[data-value]')).toBeNull();
+    expect(sendCode).toHaveBeenCalledTimes(0);
+    expect(loginQr).toHaveBeenCalledTimes(0);
+  });
+
+  test('shows the banner when the saved session ended', async () => {
+    // Given: fake scenario revoked
+    // When: render, let the first code arrive
+    renderApp('revoked');
+    await advance(0);
+    // Then
+    expect(screen.getByText('You were logged out.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log in again' })).toBeTruthy();
+    expect(fullText('Point your phone at this code.')).toBeTruthy();
+  });
+
+  test('keeps the banner until the next login', async () => {
+    // Given: as above, then the page unmounted and a new <App> rendered with the same storage and scenario default
+    renderApp('revoked');
+    await advance(0);
+    cleanup();
+    // When: render
+    renderApp('default');
+    await advance(0);
+    // Then
+    expect(screen.getByText('You were logged out.')).toBeTruthy();
+  });
+
+  test('Log in again hides the banner and shows a new code', async () => {
+    // Given: as above
+    const user = setupUser();
+    renderApp('revoked');
+    await advance(0);
+    // When: click Log in again
+    await user.click(screen.getByRole('button', { name: 'Log in again' }));
+    await advance(0);
+    // Then
+    expect(screen.queryByText('You were logged out.')).toBeNull();
+    expect(qrBox().querySelector('svg')?.getAttribute('data-value')).toBe(
+      'tg://login?token=fake-2',
+    );
+    expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
+  });
+
+  test('restores the same state twice', async () => {
+    // Given: fake saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
+    const connection = connectInMemory(service);
+    const views: LoginView[] = [];
+    connection.subscribe((view) => views.push(view));
+    // When: send hello twice through the connection
+    connection.send({ type: 'hello' });
+    connection.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    const accounts = views.flatMap((v) => (v.login.step === 'done' ? [v.login.account.name] : []));
+    expect(accounts).toEqual(['Minh Anh']);
+    expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
+    expect(await storage.getItem('local:fakeSession')).toEqual(MINH);
   });
 });

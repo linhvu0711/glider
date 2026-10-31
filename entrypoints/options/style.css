@@ -336,3 +336,25 @@ body {
 .eye:hover {
   color: var(--text);
 }
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px 20px;
+}
+
+.banner-icon {
+  flex: none;
+  color: var(--red);
+}
+
+.banner-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.banner .link {
+  margin-left: auto;
+}

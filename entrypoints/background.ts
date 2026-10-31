@@ -63,7 +63,10 @@ export default defineBackground({
 
     const host = createHost(async (fake) => {
       if (import.meta.env.WXT_TELEGRAM === 'fake') {
-        const { createFakeAuth, isFakeScenario } = await import('../lib/telegram/fake');
+        const { createFakeAuth, fakeSession, isFakeScenario } = await import(
+          '../lib/telegram/fake'
+        );
+        if (fake !== undefined) await fakeSession.removeValue();
         const scenario = isFakeScenario(fake) ? fake : 'default';
         return createLoginService(createFakeAuth({ scenario }), device);
       }
