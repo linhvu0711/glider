@@ -604,3 +604,30 @@ describe('no internet', () => {
     expect(qrBox().querySelector('svg')).toBeTruthy();
   });
 });
+
+describe('QR expiry', () => {
+  test('shows This code expired after 5 codes', async () => {
+    // Given: fake scenario qr-expire, fake timers
+    // When: render, advance 11 s
+    renderApp('qr-expire');
+    await advance(11_000);
+    // Then
+    expect(screen.getByText('This code expired.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Get a new code' })).toBeTruthy();
+    expect(document.querySelector('svg[data-value]')).toBeNull();
+    expect(screen.queryByText(/^New code in/)).toBeNull();
+  });
+
+  test('Get a new code shows a fresh code', async () => {
+    // Given: as above
+    const user = setupUser();
+    renderApp('qr-expire');
+    await advance(11_000);
+    // When: click Get a new code, advance 0 s for the first code
+    await user.click(screen.getByRole('button', { name: 'Get a new code' }));
+    await advance(0);
+    // Then
+    expect(qrBox().querySelector('svg')).toBeTruthy();
+    expect(screen.getByText('New code in 0:02')).toBeTruthy();
+  });
+});

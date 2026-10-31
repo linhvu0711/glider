@@ -13,6 +13,9 @@ const loggedOutNotice = storage.defineItem<boolean>('local:loggedOutNotice', {
   fallback: false,
 });
 
+// Telegram's codes live 30 s, so 5 codes are about 2.5 minutes of waiting.
+const MAX_QR_CODES = 5;
+
 function isBusy(login: LoginStep): boolean {
   switch (login.step) {
     case 'phone':
@@ -66,9 +69,17 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
     const controller = new AbortController();
     qr = controller;
     show({ step: 'qr', code: null, expired: false });
+    let codes = 0;
     auth
       .loginQr((code) => {
-        if (!controller.signal.aborted) show({ step: 'qr', code, expired: false });
+        if (controller.signal.aborted) return;
+        codes += 1;
+        if (codes > MAX_QR_CODES) {
+          stopQr();
+          show({ step: 'qr', code: null, expired: true });
+        } else {
+          show({ step: 'qr', code, expired: false });
+        }
       }, controller.signal)
       .then(
         (result) => {

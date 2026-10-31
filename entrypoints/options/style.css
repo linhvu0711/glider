@@ -444,3 +444,9 @@ body {
 .offline .button {
   margin-left: auto;
 }
+
+.qr-expired {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}

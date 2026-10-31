@@ -169,7 +169,7 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
         )}
       </div>
       {login.step === 'checking' && <QrStep checking code={null} send={send} />}
-      {login.step === 'qr' && <QrStep code={login.code} send={send} />}
+      {login.step === 'qr' && <QrStep code={login.code} expired={login.expired} send={send} />}
       {login.step === 'phone' && (
         <PhoneStep
           draft={draft}
@@ -208,16 +208,25 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
 function QrStep({
   code,
   checking = false,
+  expired = false,
   send,
 }: {
   code: QrCode | null;
   checking?: boolean;
+  expired?: boolean;
   send: Send;
 }) {
   return (
     <div className="qr-step">
       <div className="qr-box" role="group" aria-label="QR code">
-        {code ? (
+        {expired ? (
+          <div className="qr-loading">
+            <p className="qr-expired">This code expired.</p>
+            <button type="button" className="button" onClick={() => send({ type: 'newQr' })}>
+              Get a new code
+            </button>
+          </div>
+        ) : code ? (
           <QRCodeSVG
             value={code.url}
             data-value={code.url}
@@ -241,7 +250,7 @@ function QrStep({
           </li>
           <li>Point your phone at this code.</li>
         </ol>
-        {code && <Countdown expires={code.expires} />}
+        {code && !expired && <Countdown expires={code.expires} />}
         <button type="button" className="link" onClick={() => send({ type: 'usePhone' })}>
           Log in with phone number instead
         </button>
