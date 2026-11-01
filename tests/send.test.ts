@@ -181,3 +181,45 @@ describe('a page that waits', () => {
     ]).toEqual(['already', true, 1, 1]);
   });
 });
+
+describe('send limit', () => {
+  async function tenSends(sender: Awaited<ReturnType<typeof setUp>>['sender']) {
+    for (let n = 1; n <= 10; n += 1) {
+      await sender.open({ url: `https://example.com/?n=${n}`, title: 'Example Domain', icon: null });
+      if (n < 10) await advance(1_000);
+    }
+  }
+
+  test('the 11th send in a minute adds nothing', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved, 10 sends 1 s apart from t = 0
+    const { sender } = await setUp();
+    await tenSends(sender);
+    // When: at t = 10 s
+    await advance(1_000);
+    const opened = await sender.open({
+      url: 'https://example.com/?n=11',
+      title: 'Example Domain',
+      icon: null,
+    });
+    // Then
+    expect([
+      opened,
+      (await links()).some((link) => link.page.url === 'https://example.com/?n=11'),
+    ]).toEqual([{ kind: 'limit', chat: READ_LATER, seconds: 50 }, false]);
+  });
+
+  test('sends again once the first send is a minute old', async () => {
+    // Given: as above
+    const { sender } = await setUp();
+    await tenSends(sender);
+    // When: at t = 60 s
+    await advance(51_000);
+    const opened = await sender.open({
+      url: 'https://example.com/?n=11',
+      title: 'Example Domain',
+      icon: null,
+    });
+    // Then
+    expect(opened.kind).toBe('added');
+  });
+});

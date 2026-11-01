@@ -11,6 +11,8 @@ export const sendList = storage.defineItem<Sends>('session:links', {
 export const UNDO_MS = 5_000;
 // How long a sent link stays in the popup.
 const SHOWN_MS = 2_500;
+export const SEND_LIMIT = 10;
+const LIMIT_MS = 60_000;
 
 export interface SendService {
   /** Loads the saved links; the worker calls it each time it wakes. */
@@ -94,6 +96,10 @@ export function createSendService(telegram: TelegramSend): SendService {
         );
         if (waiting) return { kind: 'already', chat, id: waiting.id };
         const now = Date.now();
+        const times = state.times.filter((time) => time > now - LIMIT_MS);
+        if (times.length >= SEND_LIMIT) {
+          return { kind: 'limit', chat, seconds: Math.ceil((times[0]! + LIMIT_MS - now) / 1000) };
+        }
         const link: Link = {
           id: crypto.randomUUID() as LinkId,
           page,
@@ -102,7 +108,7 @@ export function createSendService(telegram: TelegramSend): SendService {
           sendAt: now + UNDO_MS,
           status: 'waiting',
         };
-        await write({ links: [link, ...state.links], times: [...state.times, now] });
+        await write({ links: [link, ...state.links], times: [...times, now] });
         schedule(link);
         return { kind: 'added', chat, id: link.id };
       });
