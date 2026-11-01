@@ -49,6 +49,8 @@ export interface SendService {
   /** `page` is null when the tab has no address the extension may read. */
   open(page: Page | null): Promise<Opened>;
   undo(id: LinkId): Promise<void>;
+  /** Sends a failed link at once, with no undo window. */
+  retry(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
 }
 
@@ -127,18 +129,21 @@ export function createSendService(telegram: TelegramSend): SendService {
       await setStatus(id, 'sending');
       return found;
     });
-    if (!link) return;
+    if (link) await deliver(link);
+  }
+
+  async function deliver(link: Link) {
     const failure = await telegram.sendText(link.chat.id, link.page.url).then(
       () => null,
       (e: unknown) => failureOf(e, Date.now()),
     );
     await serial(() => {
-      if (failure) return fail(id, failure);
+      if (failure) return fail(link.id, failure);
       sentAt = Date.now();
-      return setStatus(id, 'sent');
+      return setStatus(link.id, 'sent');
     });
     if (failure) return;
-    dropLater(id);
+    dropLater(link.id);
     setTimeout(() => void serial(showBadge), CHECK_MS);
   }
 
@@ -198,6 +203,22 @@ export function createSendService(telegram: TelegramSend): SendService {
         await setStatus(id, 'undone');
         dropLater(id);
       });
+    },
+
+    async retry(id) {
+      const link = await serial(async () => {
+        const found = state.links.find((l) => l.id === id);
+        if (found?.status !== 'failed') return undefined;
+        if (found.failure.reason === 'wait' && Date.now() < found.failure.retryAt) return undefined;
+        if ((await telegram.account()) !== found.account) {
+          await fail(id, { reason: 'logged-out' });
+          return undefined;
+        }
+        await setStatus(id, 'sending');
+        return found;
+      });
+      // The popup's ask ends at Sending…; the row shows the rest.
+      if (link) void deliver(link);
     },
 
     remove(id) {

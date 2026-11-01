@@ -10,6 +10,7 @@ function isSendRequest(message: unknown): message is SendRequest {
     case 'send.open':
       return 'page' in message && typeof message.page === 'object';
     case 'send.undo':
+    case 'send.retry':
     case 'send.remove':
       return 'id' in message && typeof message.id === 'string';
     default:
@@ -26,6 +27,8 @@ export function answerSend(service: SendService): (message: unknown) => Promise<
         return service.open(message.page);
       case 'send.undo':
         return service.undo(message.id).then(() => ({ ok: true }));
+      case 'send.retry':
+        return service.retry(message.id).then(() => ({ ok: true }));
       case 'send.remove':
         return service.remove(message.id).then(() => ({ ok: true }));
     }
@@ -35,6 +38,7 @@ export function answerSend(service: SendService): (message: unknown) => Promise<
 export interface SendConnection {
   open(page: Page | null): Promise<Opened>;
   undo(id: LinkId): Promise<void>;
+  retry(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
 }
 
@@ -47,6 +51,9 @@ export function connectSend(
     open: (page) => send({ type: 'send.open', page }) as Promise<Opened>,
     undo: async (id) => {
       await send({ type: 'send.undo', id });
+    },
+    retry: async (id) => {
+      await send({ type: 'send.retry', id });
     },
     remove: async (id) => {
       await send({ type: 'send.remove', id });

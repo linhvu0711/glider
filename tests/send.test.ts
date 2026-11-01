@@ -6,7 +6,7 @@ import { createSendService } from '../lib/send/service';
 import type { Page, Sends } from '../lib/send/state';
 import type { Account } from '../lib/telegram/auth';
 import { createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
-import type { SendError, TelegramSend } from '../lib/telegram/send';
+import { SendError, type TelegramSend } from '../lib/telegram/send';
 
 const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
 const EXAMPLE: Page = { url: 'https://example.com/', title: 'Example Domain', icon: null };
@@ -392,6 +392,103 @@ describe('failed sends', () => {
     expect([first, telegram.sent.map((m) => m.text)]).toEqual([
       { reason: 'offline' },
       ['https://example.com/#fail=offline'],
+    ]);
+  });
+});
+
+// A Telegram send that answers each call with the next entry: an error is thrown,
+// a promise is awaited.
+function scripted(...answers: (SendError | Promise<void>)[]): TelegramSend {
+  return {
+    account: async () => LINH.id,
+    sendText: async () => {
+      const answer = answers.shift();
+      if (answer instanceof SendError) throw answer;
+      await answer;
+    },
+  };
+}
+
+async function failedId(sender: Awaited<ReturnType<typeof setUp>>['sender'], page: Page) {
+  const opened = await sender.open(page);
+  await advance(5_000);
+  if (opened.kind !== 'added') throw new Error(`not added: ${opened.kind}`);
+  return opened.id;
+}
+
+describe('retry', () => {
+  test('Retry sends a failed link at once', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; a link for #fail=offline failed at 10:00:05
+    const { telegram, sender } = await setUp();
+    const id = await failedId(sender, failing('offline'));
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect([await statuses(), telegram.sent.map((m) => m.text)]).toEqual([
+      ['sent'],
+      ['https://example.com/#fail=offline'],
+    ]);
+  });
+
+  test('Retry shows sending first', async () => {
+    // Given: a send that fails, then one that waits until the test lets it go
+    const { sender } = await setUp({
+      telegram: scripted(new SendError({ reason: 'offline' }), new Promise<void>(() => {})),
+    });
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect(await statuses()).toEqual(['sending']);
+  });
+
+  test('Retry that fails again keeps the new reason', async () => {
+    // Given: a send that fails with no internet, then with a chat it cannot reach
+    const { sender } = await setUp({
+      telegram: scripted(
+        new SendError({ reason: 'offline' }),
+        new SendError({ reason: 'unreachable' }),
+      ),
+    });
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect((await links())[0]).toMatchObject({ status: 'failed', failure: { reason: 'unreachable' } });
+  });
+
+  test('Retry before the wait is over does nothing', async () => {
+    // Given: a link for #fail=wait-30 failed at 10:00:05
+    const { telegram, sender } = await setUp();
+    const id = await failedId(sender, failing('wait-30'));
+    // When
+    await advance(15_000);
+    await sender.retry(id);
+    await advance(0);
+    const early = [await statuses(), telegram.sent.map((m) => m.text)];
+    await advance(15_000);
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect([...early, await statuses()]).toEqual([['failed'], [], ['sent']]);
+  });
+
+  test('Retry after a log out says logged out', async () => {
+    // Given: a link for #fail=offline failed at 10:00:05, then the account logged out
+    const { telegram, sender } = await setUp();
+    const id = await failedId(sender, failing('offline'));
+    await storage.setItem('local:fakeSession', null);
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    const [link] = await links();
+    expect([link?.status === 'failed' ? link.failure : null, telegram.sent]).toEqual([
+      { reason: 'logged-out' },
+      [],
     ]);
   });
 });
