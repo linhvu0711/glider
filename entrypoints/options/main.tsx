@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { connectChats } from '../../lib/chats/connection';
 import { connectPort, type LoginConnection } from '../../lib/login/connection';
 import App from './App';
+import '../../components/base.css';
 import './style.css';
 
 function connect(): LoginConnection {
