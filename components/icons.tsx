@@ -25,6 +25,23 @@ export function CheckIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function BookmarkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function SearchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </Icon>
+  );
+}
+
 export function EyeIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

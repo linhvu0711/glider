@@ -7,7 +7,7 @@ import { connectInMemory } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
-import { createFakeAuth, type FakeScenario } from '../lib/telegram/fake';
+import { createFakeAuth, createFakeChats, FAKE_PHOTO, type FakeScenario } from '../lib/telegram/fake';
 
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date('2026-10-31T10:00:00Z') });
@@ -703,5 +703,96 @@ describe('two tabs', () => {
     // Then
     const last = views.at(-1)?.login;
     expect(last?.step === 'qr' ? last.code?.url : last?.step).toBe('tg://login?token=fake-2');
+  });
+});
+
+const MINH_SESSION = { name: 'Minh Anh', initials: 'MA' };
+
+function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElement }) {
+  const service = createLoginService(createFakeAuth({ scenario }), 'Chromium on Linux');
+  return render(
+    <App connection={connectInMemory(service)} chats={createFakeChats({ scenario })} />,
+    options?.container ? { container: options.container } : undefined,
+  );
+}
+
+function stepTwo() {
+  return screen.getByRole('region', { name: 'Choose the chat' });
+}
+
+function rowOf(name: string) {
+  return screen.getByRole('radio', { name }).closest('label') as HTMLElement;
+}
+
+describe('choose the chat', () => {
+  test('greys out step 2 when not logged in', async () => {
+    // Given: fake scenario default, no saved session
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    expect(
+      stepTwo().getAttribute('aria-disabled') === 'true' &&
+        screen.queryByLabelText('Search your chats') === null,
+    ).toBe(true);
+  });
+
+  test('shows the line, the search box, and Recent chats when logged in', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const card = within(stepTwo());
+    expect([
+      !!card.getByText(
+        'Links go to this one chat, sent by you. You can change it any time.',
+      ),
+      !!card.getByRole('searchbox', { name: 'Search your chats' }),
+      within(card.getByRole('radiogroup', { name: 'Recent chats' })).getAllByRole('radio').length,
+    ]).toEqual([true, true, 7]);
+  });
+
+  test('shows each chat with its second line and tag', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const rows = screen
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')?.textContent);
+    expect(rows).toEqual([
+      'Saved MessagesYour own chatYou',
+      'RLRead Later Bot@readlater_botBot',
+      'Tuan VuonlinePerson',
+      'MAMinh Anhlast seen recentlyPerson',
+      'DCDesign Crew12 membersGroup',
+      'HHermes@hermes_notes_botBot',
+      'GNGlider News1,204 subscribersChannel',
+    ]);
+  });
+
+  test('shows Saved Messages as Your own chat', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const row = rowOf('Saved Messages');
+    expect([!!row.querySelector('.avatar svg'), row.querySelector('img')]).toEqual([true, null]);
+  });
+
+  test('shows the chat photo when the chat has one', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    expect(rowOf('Tuan Vu').querySelector('img')?.getAttribute('src')).toBe(FAKE_PHOTO);
   });
 });

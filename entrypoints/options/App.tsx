@@ -6,7 +6,15 @@ import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
-import { AlertIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../../components/icons';
+import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
+import {
+  AlertIcon,
+  BookmarkIcon,
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  SearchIcon,
+} from '../../components/icons';
 
 function useLoginView(connection: LoginConnection | undefined): LoginView | null {
   const [view, setView] = useState<LoginView | null>(null);
@@ -19,7 +27,13 @@ function useLoginView(connection: LoginConnection | undefined): LoginView | null
   return view;
 }
 
-export default function App({ connection }: { connection?: LoginConnection }) {
+export default function App({
+  connection,
+  chats,
+}: {
+  connection?: LoginConnection;
+  chats?: TelegramChats;
+}) {
   const view = useLoginView(connection);
   return (
     <div className="page">
@@ -42,6 +56,7 @@ export default function App({ connection }: { connection?: LoginConnection }) {
         <>
           {view.notice && <LoggedOutBanner send={connection.send} />}
           <LoginCard login={view.login} send={connection.send} />
+          {chats && <TargetCard loggedIn={view.login.step === 'done'} chats={chats} />}
         </>
       )}
       <footer className="footer">
@@ -496,4 +511,141 @@ function PasswordStep({
       </button>
     </form>
   );
+}
+
+// Picked by id, so a chat keeps its color in every list (mockup frame 1).
+const AVATAR_COLORS = ['#2563eb', '#db2777', '#059669', '#b45309', '#7c3aed', '#0891b2', '#dc2626'];
+
+const MAX_ROWS = 20;
+
+const TAGS: Record<ChatKind, string> = {
+  self: 'You',
+  person: 'Person',
+  bot: 'Bot',
+  group: 'Group',
+  channel: 'Channel',
+};
+
+function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
+  const [list, setList] = useState<Chat[] | null>(null);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    let live = true;
+    void chats.list().then((next) => {
+      if (live) setList(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [loggedIn, chats]);
+
+  return (
+    <section
+      className={loggedIn ? 'card' : 'card card-off'}
+      aria-labelledby="step-2-title"
+      aria-disabled={loggedIn ? undefined : 'true'}
+      inert={!loggedIn}
+    >
+      <div className="card-head">
+        <span className="badge">
+          <span>2</span>
+        </span>
+        <h2 className="card-title" id="step-2-title">
+          Choose the chat
+        </h2>
+      </div>
+      <p className="muted card-line">
+        Links go to this one chat, sent by you. You can change it any time.
+      </p>
+      {loggedIn && (
+        <>
+          <div className="search-field">
+            <SearchIcon className="search-icon" />
+            <input
+              className="input search-input"
+              type="search"
+              placeholder="Search your chats"
+              aria-label="Search your chats"
+            />
+          </div>
+          <h3 className="list-title" id="chat-list-title">
+            Recent chats
+          </h3>
+          <div className="chat-list" role="radiogroup" aria-labelledby="chat-list-title">
+            {list?.slice(0, MAX_ROWS).map((chat) => (
+              <ChatRow key={chat.id} chat={chat} chats={chats} />
+            ))}
+          </div>
+          <div className="save-row">
+            <button type="button" className="button button-save" disabled>
+              Save
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ChatRow({ chat, chats }: { chat: Chat; chats: TelegramChats }) {
+  return (
+    <label className="chat-row">
+      <input type="radio" name="target-chat" aria-label={chat.name} />
+      <ChatAvatar chat={chat} chats={chats} />
+      <span className="chat-text">
+        <span className="chat-name">{chat.name}</span>
+        <span className="muted">{chat.detail}</span>
+      </span>
+      <span className="chat-tag">{TAGS[chat.kind]}</span>
+    </label>
+  );
+}
+
+function ChatAvatar({ chat, chats }: { chat: Chat; chats: TelegramChats }) {
+  const photo = usePhoto(chat, chats);
+  if (chat.kind === 'self') {
+    return (
+      <span className="avatar chat-avatar" style={{ background: 'var(--accent)' }}>
+        <BookmarkIcon width={16} height={16} />
+      </span>
+    );
+  }
+  if (photo) return <img className="avatar-photo" alt="" src={photo} />;
+  return (
+    <span
+      className="avatar chat-avatar"
+      style={{ background: AVATAR_COLORS[Math.abs(chat.id) % AVATAR_COLORS.length] }}
+    >
+      <span>{chat.initials}</span>
+    </span>
+  );
+}
+
+// One ask per chat for the life of the page.
+const photoAsks = new WeakMap<TelegramChats, Map<ChatId, Promise<string | null>>>();
+
+function usePhoto(chat: Chat, chats: TelegramChats): string | null {
+  const [photo, setPhoto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chat.hasPhoto) return;
+    let live = true;
+    let asks = photoAsks.get(chats);
+    if (!asks) {
+      asks = new Map();
+      photoAsks.set(chats, asks);
+    }
+    let ask = asks.get(chat.id);
+    if (!ask) {
+      ask = chats.photo(chat.id);
+      asks.set(chat.id, ask);
+    }
+    void ask.then((url) => {
+      if (live) setPhoto(url);
+    });
+    return () => {
+      live = false;
+    };
+  }, [chat.id, chat.hasPhoto, chats]);
+  return photo;
 }

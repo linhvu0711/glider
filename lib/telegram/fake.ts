@@ -1,5 +1,6 @@
 import { storage } from 'wxt/utils/storage';
 import { AuthError, type Account, type QrCode, type TelegramAuth } from './auth';
+import type { Chat, ChatId, ChatKind, TelegramChats } from './chats';
 
 export type FakeScenario =
   | 'default'
@@ -133,6 +134,47 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
     async logOut() {
       await respond();
       await fakeSession.setValue(null);
+    },
+  };
+}
+
+function chat(
+  id: number,
+  kind: ChatKind,
+  name: string,
+  username: string | null,
+  detail: string,
+  initials: string,
+  hasPhoto = false,
+): Chat {
+  return { id: id as ChatId, kind, name, username, detail, initials, hasPhoto };
+}
+
+export const FAKE_CHATS: Chat[] = [
+  chat(7000, 'self', 'Saved Messages', null, 'Your own chat', ''),
+  chat(7001, 'bot', 'Read Later Bot', 'readlater_bot', '@readlater_bot', 'RL'),
+  chat(7005, 'person', 'Tuan Vu', null, 'online', 'TV', true),
+  chat(7002, 'person', 'Minh Anh', null, 'last seen recently', 'MA'),
+  chat(-7003, 'group', 'Design Crew', null, '12 members', 'DC'),
+  chat(7004, 'bot', 'Hermes', 'hermes_notes_bot', '@hermes_notes_bot', 'H'),
+  chat(-1000000007006, 'channel', 'Glider News', 'glider_news', '1,204 subscribers', 'GN'),
+];
+
+export const FAKE_PHOTO =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">' +
+      '<rect width="160" height="160" fill="#b45309"/>' +
+      '<circle cx="80" cy="80" r="40" fill="#fff"/></svg>',
+  );
+
+export function createFakeChats(_options: { scenario: FakeScenario }): TelegramChats {
+  return {
+    async list() {
+      return FAKE_CHATS;
+    },
+    async photo(id) {
+      return id === 7005 ? FAKE_PHOTO : null;
     },
   };
 }
