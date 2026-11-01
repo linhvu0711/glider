@@ -10,7 +10,8 @@ export default defineConfig({
     name: 'Glider',
     description: 'Send the page link to Telegram.',
     // activeTab reads the page only after the user opens the popup, and shows no install warning.
-    permissions: ['storage', 'activeTab'],
+    // notifications shows the Mac banner when a send fails.
+    permissions: ['storage', 'activeTab', 'notifications'],
     action: { default_title: 'Glider' },
     // The shortcut opens the popup like a click, and opening the popup is the send.
     commands: {

@@ -3,6 +3,7 @@ import { storage } from 'wxt/utils/storage';
 import { targetChat, targetChatFor } from '../target-chat';
 import { SendError, type TelegramSend } from '../telegram/send';
 import {
+  addressOf,
   isWebPage,
   type Link,
   type LinkFailure,
@@ -44,6 +45,23 @@ function failureOf(e: unknown, now: number): LinkFailure {
   return failure.reason === 'wait'
     ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
     : { reason: failure.reason };
+}
+
+function noticeOf(chat: string, failure: LinkFailure, now: number): string {
+  switch (failure.reason) {
+    case 'offline':
+      return 'Not sent: no internet.';
+    case 'logged-out':
+      return 'Not sent: you were logged out.';
+    case 'unreachable':
+      return `Can't send to ${chat}. It may be deleted, stopped, or blocked.`;
+    case 'wait':
+      return `Telegram asks to wait ${Math.ceil((failure.retryAt - now) / 1000)} s.`;
+    case 'other':
+      return 'Not sent: something went wrong.';
+    case 'closed':
+      return 'Not sent: Chrome closed first.';
+  }
 }
 
 export interface SendService {
@@ -93,13 +111,23 @@ export function createSendService(telegram: TelegramSend): SendService {
     });
   }
 
-  // The only place a link turns failed.
-  function fail(id: LinkId, failure: LinkFailure) {
-    return write({
+  // The only place a link turns failed. The banner's id is the link's, so a new failure
+  // of the same link replaces its banner.
+  async function fail(id: LinkId, failure: LinkFailure) {
+    await write({
       ...state,
       links: state.links.map((link): Link =>
         link.id === id ? { ...link, status: 'failed', failure } : link,
       ),
+    });
+    const link = state.links.find((l) => l.id === id);
+    if (!link) return;
+    await browser.notifications.create(id, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('/icons/128.png'),
+      title: 'Glider',
+      message: noticeOf(link.chat.name, failure, Date.now()),
+      contextMessage: addressOf(link.page.url),
     });
   }
 
@@ -218,6 +246,7 @@ export function createSendService(telegram: TelegramSend): SendService {
           return undefined;
         }
         await setStatus(id, 'sending');
+        await browser.notifications.clear(id);
         return found;
       });
       // The popup's ask ends at Sending…; the row shows the rest.
@@ -226,7 +255,9 @@ export function createSendService(telegram: TelegramSend): SendService {
 
     remove(id) {
       return serial(async () => {
-        if (state.links.some((link) => link.id === id && link.status === 'failed')) await drop(id);
+        if (!state.links.some((link) => link.id === id && link.status === 'failed')) return;
+        await drop(id);
+        await browser.notifications.clear(id);
       });
     },
   };

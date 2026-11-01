@@ -524,3 +524,69 @@ describe('red badge', () => {
     expect([waiting, sent, await badge()]).toEqual(['1', '✓', '!']);
   });
 });
+
+describe('notifications', () => {
+  test('says why in a notification', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { sender } = await setUp();
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    // When
+    for (const url of [
+      'https://example.com/#fail=offline',
+      'https://example.org/#fail=logged-out',
+      'https://example.net/#fail=unreachable',
+      'https://example.com/?flood#fail=wait-30',
+      'https://example.org/?other#fail=other',
+    ]) {
+      await sender.open({ url, title: 'Example Domain', icon: null });
+    }
+    await advance(5_000);
+    // Then
+    const shown = create.mock.calls.map((call) => {
+      const options = call[1] as unknown as { title: string; message: string; contextMessage: string };
+      return [options.title, options.message, options.contextMessage];
+    });
+    expect([
+      [...shown].sort(),
+      (create.mock.calls[0]?.[1] as unknown as { iconUrl: string } | undefined)?.iconUrl,
+    ]).toEqual([
+      [
+        ['Glider', "Can't send to Read Later Bot. It may be deleted, stopped, or blocked.", 'example.net'],
+        ['Glider', 'Not sent: no internet.', 'example.com'],
+        ['Glider', 'Not sent: something went wrong.', 'example.org?other'],
+        ['Glider', 'Not sent: you were logged out.', 'example.org'],
+        ['Glider', 'Telegram asks to wait 30 s.', 'example.com?flood'],
+      ],
+      'chrome-extension://test-extension-id/icons/128.png',
+    ]);
+  });
+
+  test('Remove clears its notification', async () => {
+    // Given: a link for #fail=offline failed at 10:00:05
+    const { sender } = await setUp();
+    const id = await failedId(sender, failing('offline'));
+    const shown = Object.keys(await fakeBrowser.notifications.getAll()).length;
+    // When
+    await sender.remove(id);
+    await advance(0);
+    // Then
+    expect([shown, await fakeBrowser.notifications.getAll()]).toEqual([1, {}]);
+  });
+
+  test('a second failure of one link shows one notification', async () => {
+    // Given: a send that always fails with no internet; the link failed at 10:00:05
+    const { sender } = await setUp({
+      telegram: scripted(new SendError({ reason: 'offline' }), new SendError({ reason: 'offline' })),
+    });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect([
+      Object.keys(await fakeBrowser.notifications.getAll()).length,
+      create.mock.calls.length,
+    ]).toEqual([1, 2]);
+  });
+});

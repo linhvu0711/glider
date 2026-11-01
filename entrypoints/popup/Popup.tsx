@@ -4,7 +4,7 @@ import { AlertIcon, GearIcon, GlobeIcon, UndoIcon } from '../../components/icons
 import { ShortcutKeys } from '../../components/shortcut-keys';
 import type { SendConnection } from '../../lib/send/connection';
 import { SEND_LIMIT, sendList, UNDO_MS } from '../../lib/send/service';
-import type { Link, Opened } from '../../lib/send/state';
+import { addressOf, type Link, type Opened } from '../../lib/send/state';
 import type { TelegramChats } from '../../lib/telegram/chats';
 
 // The send service writes the links; the popup only shows them.
@@ -47,12 +47,6 @@ function useNow(): number {
     return () => clearInterval(id);
   }, []);
   return now;
-}
-
-/** The address as the mockup shows it: no protocol, no `www.`, no lone `/`. */
-export function addressOf(url: string): string {
-  const { host, pathname, search } = new URL(url);
-  return host.replace(/^www\./, '') + (pathname === '/' ? '' : pathname) + search;
 }
 
 export default function Popup({

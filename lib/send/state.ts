@@ -49,3 +49,9 @@ export function isWebPage(url: string): boolean {
     return false;
   }
 }
+
+/** The address as the mockup shows it: no protocol, no `www.`, no lone `/`. */
+export function addressOf(url: string): string {
+  const { host, pathname, search } = new URL(url);
+  return host.replace(/^www\./, '') + (pathname === '/' ? '' : pathname) + search;
+}
