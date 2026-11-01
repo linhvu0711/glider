@@ -1,3 +1,4 @@
+import { browser } from 'wxt/browser';
 import { storage } from 'wxt/utils/storage';
 import { targetChat, targetChatFor } from '../target-chat';
 import type { TelegramSend } from '../telegram/send';
@@ -13,6 +14,18 @@ export const UNDO_MS = 5_000;
 const SHOWN_MS = 2_500;
 export const SEND_LIMIT = 10;
 const LIMIT_MS = 60_000;
+// How long the badge shows the check after a send.
+const CHECK_MS = 2_000;
+const BLUE = '#2563eb';
+const GREEN = '#16a34a';
+
+// One answer per state, so one send never shows two badges.
+function badgeFor(links: Link[], sentAt: number | null, now: number) {
+  const waiting = links.filter((l) => l.status === 'waiting' || l.status === 'sending').length;
+  if (waiting > 0) return { text: String(waiting), color: BLUE };
+  if (sentAt !== null && now - sentAt < CHECK_MS) return { text: '✓', color: GREEN };
+  return { text: '', color: BLUE };
+}
 
 export interface SendService {
   /** Loads the saved links; the worker calls it each time it wakes. */
@@ -27,6 +40,7 @@ export function createSendService(telegram: TelegramSend): SendService {
   let state: Sends = { links: [], times: [] };
   const timers = new Map<LinkId, ReturnType<typeof setTimeout>>();
   let queue: Promise<unknown> = Promise.resolve();
+  let sentAt: number | null = null;
 
   // One change at a time, so no write is lost to another.
   function serial<T>(run: () => Promise<T>): Promise<T> {
@@ -35,9 +49,20 @@ export function createSendService(telegram: TelegramSend): SendService {
     return next;
   }
 
+  // The service is the badge's only writer too.
+  async function showBadge() {
+    const { text, color } = badgeFor(state.links, sentAt, Date.now());
+    await Promise.all([
+      browser.action.setBadgeText({ text }),
+      browser.action.setBadgeBackgroundColor({ color }),
+      browser.action.setBadgeTextColor({ color: '#fff' }),
+    ]);
+  }
+
   async function write(next: Sends) {
     state = next;
     await sendList.setValue(next);
+    await showBadge();
   }
 
   function setStatus(id: LinkId, status: LinkStatus) {
@@ -75,8 +100,13 @@ export function createSendService(telegram: TelegramSend): SendService {
       () => true,
       () => false,
     );
-    await serial(() => setStatus(id, sent ? 'sent' : 'failed'));
-    if (sent) dropLater(id);
+    await serial(() => {
+      if (sent) sentAt = Date.now();
+      return setStatus(id, sent ? 'sent' : 'failed');
+    });
+    if (!sent) return;
+    dropLater(id);
+    setTimeout(() => void serial(showBadge), CHECK_MS);
   }
 
   return {

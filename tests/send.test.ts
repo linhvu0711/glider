@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import { answerSend, connectSend } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
@@ -237,5 +238,23 @@ describe('not a web page', () => {
     ];
     // Then
     expect([kinds, await links()]).toEqual([['not-web', 'not-web', 'not-web'], []]);
+  });
+});
+
+describe('badge', () => {
+  test('counts waiting links on the badge, then shows a check', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { sender } = await setUp();
+    const badge = () => fakeBrowser.action.getBadgeText({});
+    // When
+    await sender.open(EXAMPLE);
+    await sender.open(EXAMPLE_ORG);
+    await advance(0);
+    const waiting = await badge();
+    await advance(5_000);
+    const sent = await badge();
+    await advance(2_000);
+    // Then
+    expect([waiting, sent, await badge()]).toEqual(['2', '✓', '']);
   });
 });
