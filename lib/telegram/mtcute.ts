@@ -1,5 +1,6 @@
-import { TelegramClient, tl } from '@mtcute/web';
+import { Chat as TgChat, TelegramClient, tl, User } from '@mtcute/web';
 import { AuthError, type Account, type TelegramAuth } from './auth';
+import type { Chat, ChatId, TelegramChats } from './chats';
 
 const TIMEOUT_MS = 15_000;
 const DATABASE = 'glider';
@@ -44,6 +45,84 @@ export function toAuthError(e: unknown): AuthError {
   return new AuthError('offline');
 }
 
+const LAST_SEEN: Record<string, string> = {
+  online: 'online',
+  recently: 'last seen recently',
+  within_week: 'last seen within a week',
+  within_month: 'last seen within a month',
+  long_time_ago: 'last seen a long time ago',
+};
+
+function lastSeen(user: User): string {
+  if (user.status === 'offline' && user.lastOnline) {
+    const day = user.lastOnline.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return `last seen ${day}`;
+  }
+  return LAST_SEEN[user.status] ?? 'last seen a long time ago';
+}
+
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join('');
+}
+
+function countOf(chat: TgChat, word: 'members' | 'subscribers', fallback: string): string {
+  if (chat.membersCount !== null) return `${chat.membersCount.toLocaleString('en-US')} ${word}`;
+  return chat.username ? `@${chat.username}` : fallback;
+}
+
+/** A chat row for a dialog peer, or null for a chat the user cannot send to. */
+export function toChat(peer: User | TgChat): Chat | null {
+  const id = peer.id as ChatId;
+  const hasPhoto = peer.photo !== null;
+  if (peer instanceof User) {
+    if (peer.isSelf) {
+      return {
+        id,
+        kind: 'self',
+        name: 'Saved Messages',
+        username: peer.username,
+        detail: 'Your own chat',
+        initials: '',
+        hasPhoto: false,
+      };
+    }
+    const name = peer.displayName;
+    const base = { id, name, username: peer.username, initials: initialsOf(name), hasPhoto };
+    if (peer.isBot) return { ...base, kind: 'bot', detail: `@${peer.username ?? ''}` };
+    return { ...base, kind: 'person', detail: lastSeen(peer) };
+  }
+  const name = peer.displayName;
+  const base = { id, name, username: peer.username, initials: initialsOf(name), hasPhoto };
+  switch (peer.chatType) {
+    case 'group':
+    case 'supergroup':
+      return { ...base, kind: 'group', detail: countOf(peer, 'members', 'Group') };
+    case 'channel':
+    case 'gigagroup':
+      // isAdmin is true for any admin right; only these two can post.
+      if (!peer.isCreator && !peer.adminRights?.postMessages) return null;
+      return { ...base, kind: 'channel', detail: countOf(peer, 'subscribers', 'Channel') };
+    default:
+      return null;
+  }
+}
+
+const BASE64_CHUNK = 8_192;
+
+// A service worker has no Buffer, so base64 goes through btoa.
+export function photoUrl(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK));
+  }
+  return `data:image/jpeg;base64,${btoa(binary)}`;
+}
+
 function toAccount(user: { firstName?: string | null; lastName?: string | null }): Account {
   const parts = [user.firstName, user.lastName].filter((p): p is string => !!p);
   const name = parts.join(' ') || 'Telegram user';
@@ -63,27 +142,38 @@ function deleteDatabase(): Promise<void> {
   });
 }
 
-export function createMtcuteAuth(
+export interface MtcuteClient {
+  get(): TelegramClient;
+  /** Deletes the saved session so the next login starts clean (a session that ended from outside). */
+  reset(): Promise<void>;
+}
+
+// One client for login and the chat list, so both use one saved session.
+export function createMtcuteClient(
   config: { apiId: number; apiHash: string },
   device: string,
   version: string,
-): TelegramAuth {
+): MtcuteClient {
   let client: TelegramClient | null = null;
+  return {
+    get() {
+      client ??= new TelegramClient(mtcuteClientOptions(config, device, version));
+      return client;
+    },
+    async reset() {
+      const old = client;
+      client = null;
+      await old?.destroy().catch(() => {});
+      await deleteDatabase();
+    },
+  };
+}
+
+export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
   let phone = '';
   let phoneCodeHash = '';
-
-  function tg(): TelegramClient {
-    client ??= new TelegramClient(mtcuteClientOptions(config, device, version));
-    return client;
-  }
-
-  // Deletes the saved session so the next login starts clean (a session that ended from outside).
-  async function resetSession() {
-    const old = client;
-    client = null;
-    await old?.destroy().catch(() => {});
-    await deleteDatabase();
-  }
+  const tg = () => client.get();
+  const resetSession = () => client.reset();
 
   async function call<T>(run: (tg: TelegramClient, signal: AbortSignal) => Promise<T>) {
     try {
@@ -181,6 +271,41 @@ export function createMtcuteAuth(
       } catch (e) {
         if (!(e instanceof AuthError && e.kind === 'session-ended')) throw e;
         await resetSession();
+      }
+    },
+  };
+}
+
+const MAX_CHATS = 200;
+
+export function createMtcuteChats(client: MtcuteClient): TelegramChats {
+  let peers = new Map<ChatId, User | TgChat>();
+
+  return {
+    async list() {
+      const t = client.get();
+      // The spike sent only after start had loaded the user (issue #4, Known).
+      await t.start({});
+      const next = new Map<ChatId, User | TgChat>();
+      const chats: Chat[] = [];
+      for await (const dialog of t.iterDialogs({ limit: MAX_CHATS })) {
+        const chat = toChat(dialog.peer);
+        if (!chat) continue;
+        next.set(chat.id, dialog.peer);
+        chats.push(chat);
+      }
+      const selfAt = chats.findIndex((chat) => chat.kind === 'self');
+      const self = selfAt === -1 ? toChat(await t.getMe()) : chats.splice(selfAt, 1)[0];
+      peers = next;
+      return self ? [self, ...chats] : chats;
+    },
+    async photo(id) {
+      const photo = peers.get(id)?.photo;
+      if (!photo) return null;
+      try {
+        return photoUrl(await client.get().downloadAsBuffer(photo.small));
+      } catch {
+        return null;
       }
     },
   };

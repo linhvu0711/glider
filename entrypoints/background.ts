@@ -5,7 +5,7 @@ import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import { telegramConfig } from '../lib/telegram/config';
 import { createFakeAuth, fakeSession, isFakeScenario } from '../lib/telegram/fake';
-import { createMtcuteAuth } from '../lib/telegram/mtcute';
+import { createMtcuteAuth, createMtcuteClient } from '../lib/telegram/mtcute';
 
 export default defineBackground({
   type: 'module',
@@ -22,12 +22,12 @@ export default defineBackground({
         const scenario = isFakeScenario(fake) ? fake : 'default';
         return createLoginService(createFakeAuth({ scenario }), device);
       }
-      const auth = createMtcuteAuth(
+      const client = createMtcuteClient(
         telegramConfig(),
         device,
         browser.runtime.getManifest().version,
       );
-      return createLoginService(auth, device);
+      return createLoginService(createMtcuteAuth(client), device);
     }, { fake: import.meta.env.WXT_TELEGRAM === 'fake' });
 
     let ports = 0;
