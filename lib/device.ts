@@ -18,3 +18,9 @@ export function deviceLabel(nav: {
   const os = platform && platform !== 'Unknown' ? platform : null;
   return os ? `${browser} on ${os}` : browser;
 }
+
+/** The keys of the send shortcut the manifest suggests, as this platform names them. */
+export function keysFor(nav: { userAgentData?: { platform: string }; platform?: string }): string[] {
+  const platform = nav.userAgentData?.platform ?? nav.platform ?? '';
+  return /mac/i.test(platform) ? ['⌘', '⇧', 'S'] : ['Ctrl', 'Shift', 'S'];
+}

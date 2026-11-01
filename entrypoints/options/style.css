@@ -1,31 +1,3 @@
-:root {
-  --bg: #f7f8fa;
-  --card: #fff;
-  --border: #e5e7eb;
-  --text: #111827;
-  --text-2: #4b5563;
-  --text-3: #6b7280;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --red: #dc2626;
-  --green: #16a34a;
-  --radius-card: 12px;
-  --radius-control: 8px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
-}
-
 .page {
   width: 656px;
   max-width: 100%;
@@ -102,11 +74,6 @@ body {
   font-weight: 600;
 }
 
-.muted {
-  font-size: 13px;
-  color: var(--text-3);
-}
-
 .qr-step {
   display: flex;
   gap: 24px;
@@ -166,20 +133,6 @@ body {
   margin: 0;
 }
 
-.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.link:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
-}
-
 .badge-done {
   background: var(--green);
   color: #fff;
@@ -197,17 +150,6 @@ body {
   color: var(--green);
   font-size: 13px;
   font-weight: 500;
-}
-
-.avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
 }
 
 .account-row {
@@ -282,27 +224,6 @@ body {
 .error {
   font-size: 13px;
   color: var(--red);
-}
-
-.button {
-  height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.button:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .links {
@@ -404,22 +325,6 @@ body {
   gap: 8px;
 }
 
-.button-plain {
-  height: 40px;
-  padding: 0 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--card);
-  color: var(--text);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.button-plain:hover {
-  background: #f9fafb;
-}
-
 .button-red,
 .button-red:hover:not(:disabled) {
   background: var(--red);
@@ -517,20 +422,6 @@ body {
   accent-color: var(--accent);
 }
 
-.chat-avatar {
-  width: 36px;
-  height: 36px;
-  font-size: 12px;
-}
-
-.avatar-photo {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
 .chat-text {
   display: flex;
   flex-direction: column;
@@ -626,12 +517,9 @@ body {
 .header-sub,
 .header-account > span,
 .badge > span,
-.avatar > span,
 .card-title,
 .chip-done > span,
 .account-text,
-.button,
-.button-plain,
 .banner-text,
 .banner .link,
 .offline-text,
@@ -639,4 +527,18 @@ body {
 .chat-tag,
 .list-title {
   text-box: trim-both cap alphabetic;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shortcut-change {
+  margin-left: auto;
+}
+
+.pin-hint {
+  margin: 12px 0 0;
 }

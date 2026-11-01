@@ -8,9 +8,11 @@ import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
 import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
+import { browser } from 'wxt/browser';
+import { ChatAvatar } from '../../components/chat-avatar';
+import { ShortcutKeys } from '../../components/shortcut-keys';
 import {
   AlertIcon,
-  BookmarkIcon,
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
@@ -72,6 +74,7 @@ export default function App({
             // A new key per account: no list, pick, or search stays from the last account.
             <TargetCard key={chatAccount?.id ?? 'none'} account={chatAccount} chats={chats} />
           )}
+          <SendFasterCard />
         </>
       )}
       <footer className="footer">
@@ -528,9 +531,6 @@ function PasswordStep({
   );
 }
 
-// Picked by id, so a chat keeps its color in every list (mockup frame 1).
-const AVATAR_COLORS = ['#2563eb', '#db2777', '#059669', '#b45309', '#7c3aed', '#0891b2', '#dc2626'];
-
 const MAX_ROWS = 20;
 
 const TAGS: Record<ChatKind, string> = {
@@ -755,6 +755,36 @@ function TargetCard({ account, chats }: { account: Account | null; chats: Telegr
   );
 }
 
+// Nothing to do here, so the step is never greyed and has no Done chip.
+function SendFasterCard() {
+  return (
+    <section className="card" aria-labelledby="step-3-title">
+      <div className="card-head">
+        <span className="badge">
+          <span>3</span>
+        </span>
+        <h2 className="card-title" id="step-3-title">
+          Send faster
+        </h2>
+      </div>
+      <div className="shortcut-row">
+        <ShortcutKeys />
+        <span>sends the page you are on.</span>
+        <button
+          type="button"
+          className="link shortcut-change"
+          onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}
+        >
+          Change shortcut
+        </button>
+      </div>
+      <p className="muted pin-hint">
+        Pin Glider to the toolbar so one click sends. Extensions menu → pin next to Glider.
+      </p>
+    </section>
+  );
+}
+
 function ChatRow({
   chat,
   chats,
@@ -789,52 +819,4 @@ function ChatRow({
       )}
     </label>
   );
-}
-
-function ChatAvatar({ chat, chats }: { chat: Chat; chats: TelegramChats }) {
-  const photo = usePhoto(chat, chats);
-  if (chat.kind === 'self') {
-    return (
-      <span className="avatar chat-avatar" style={{ background: 'var(--accent)' }}>
-        <BookmarkIcon width={16} height={16} />
-      </span>
-    );
-  }
-  if (photo) return <img className="avatar-photo" alt="" src={photo} />;
-  return (
-    <span
-      className="avatar chat-avatar"
-      style={{ background: AVATAR_COLORS[Math.abs(chat.id) % AVATAR_COLORS.length] }}
-    >
-      <span>{chat.initials}</span>
-    </span>
-  );
-}
-
-// One ask per chat for the life of the page.
-const photoAsks = new WeakMap<TelegramChats, Map<ChatId, Promise<string | null>>>();
-
-function usePhoto(chat: Chat, chats: TelegramChats): string | null {
-  const [photo, setPhoto] = useState<string | null>(null);
-  useEffect(() => {
-    if (!chat.hasPhoto) return;
-    let live = true;
-    let asks = photoAsks.get(chats);
-    if (!asks) {
-      asks = new Map();
-      photoAsks.set(chats, asks);
-    }
-    let ask = asks.get(chat.id);
-    if (!ask) {
-      ask = chats.photo(chat.id);
-      asks.set(chat.id, ask);
-    }
-    void ask.then((url) => {
-      if (live) setPhoto(url);
-    });
-    return () => {
-      live = false;
-    };
-  }, [chat.id, chat.hasPhoto, chats]);
-  return photo;
 }

@@ -1,6 +1,7 @@
 import { Chat as TgChat, TelegramClient, tl, User } from '@mtcute/web';
 import { AuthError, type Account, type TelegramAuth } from './auth';
 import type { Chat, ChatId, TelegramChats } from './chats';
+import type { TelegramSend } from './send';
 
 const TIMEOUT_MS = 15_000;
 const DATABASE = 'glider';
@@ -302,13 +303,36 @@ export function createMtcuteChats(client: MtcuteClient): TelegramChats {
       return self ? [self, ...chats] : chats;
     },
     async photo(id) {
-      const photo = peers.get(id)?.photo;
-      if (!photo) return null;
       try {
-        return photoUrl(await client.get().downloadAsBuffer(photo.small));
+        const t = client.get();
+        let peer = peers.get(id);
+        if (!peer) {
+          // The popup asks with no list before it, often in a worker that just woke up.
+          await t.start({});
+          peer = await t.getPeer(id);
+          peers.set(id, peer);
+        }
+        if (!peer.photo) return null;
+        return photoUrl(await t.downloadAsBuffer(peer.photo.small));
       } catch {
         return null;
       }
+    },
+  };
+}
+
+export function createMtcuteSend(client: MtcuteClient): TelegramSend {
+  return {
+    async account() {
+      const t = client.get();
+      await t.prepare();
+      return (await t.storage.self.fetch())?.userId ?? null;
+    },
+    async sendText(chat, text) {
+      const t = client.get();
+      // The spike sent only after start had loaded the user (issue #5, Known).
+      await t.start({});
+      await t.sendText(chat, text);
     },
   };
 }

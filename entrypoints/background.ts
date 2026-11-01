@@ -4,13 +4,22 @@ import { deviceLabel } from '../lib/device';
 import { servePort } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
+import { serveSend } from '../lib/send/connection';
+import { createSendService } from '../lib/send/service';
 import { telegramConfig } from '../lib/telegram/config';
 import type { TelegramChats } from '../lib/telegram/chats';
-import { createFakeAuth, createFakeChats, fakeSession, isFakeScenario } from '../lib/telegram/fake';
+import {
+  createFakeAuth,
+  createFakeChats,
+  createFakeSend,
+  fakeSession,
+  isFakeScenario,
+} from '../lib/telegram/fake';
 import {
   createMtcuteAuth,
   createMtcuteChats,
   createMtcuteClient,
+  createMtcuteSend,
   type MtcuteClient,
 } from '../lib/telegram/mtcute';
 
@@ -22,27 +31,33 @@ export default defineBackground({
     });
 
     const device = deviceLabel(navigator as Parameters<typeof deviceLabel>[0]);
+    const fake = import.meta.env.WXT_TELEGRAM === 'fake';
+
+    // One client for login, the chat list, and the send, made on first use:
+    // telegramConfig() throws when .env lacks the app key.
+    let made: MtcuteClient | null = null;
+    const mtcute = () =>
+      (made ??= createMtcuteClient(telegramConfig(), device, browser.runtime.getManifest().version));
+    const client: MtcuteClient = { get: () => mtcute().get(), reset: () => mtcute().reset() };
 
     // Set with each login service, so the chat list follows the same fake scenario.
     let chats: TelegramChats | null = null;
-    let client: MtcuteClient | null = null;
     serveChats(() => chats);
 
-    const host = createHost(async (fake) => {
-      if (import.meta.env.WXT_TELEGRAM === 'fake') {
-        if (fake !== undefined) await fakeSession.removeValue();
-        const scenario = isFakeScenario(fake) ? fake : 'default';
+    const sender = createSendService(fake ? createFakeSend() : createMtcuteSend(client));
+    serveSend(sender);
+    void sender.start();
+
+    const host = createHost(async (scenarioName) => {
+      if (fake) {
+        if (scenarioName !== undefined) await fakeSession.removeValue();
+        const scenario = isFakeScenario(scenarioName) ? scenarioName : 'default';
         chats = createFakeChats({ scenario });
         return createLoginService(createFakeAuth({ scenario }), device);
       }
-      client ??= createMtcuteClient(
-        telegramConfig(),
-        device,
-        browser.runtime.getManifest().version,
-      );
       chats = createMtcuteChats(client);
       return createLoginService(createMtcuteAuth(client), device);
-    }, { fake: import.meta.env.WXT_TELEGRAM === 'fake' });
+    }, { fake });
 
     let ports = 0;
     browser.runtime.onConnect.addListener((port) => {

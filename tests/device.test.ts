@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { deviceLabel } from '../lib/device';
+import { deviceLabel, keysFor } from '../lib/device';
 
 describe('deviceLabel', () => {
   test('names Brave on macOS', () => {
@@ -53,5 +53,25 @@ describe('deviceLabel', () => {
     const nav = { userAgentData: { brands: [{ brand: 'Chromium' }], platform: '' } };
     // When / Then
     expect(deviceLabel(nav)).toBe('Chromium');
+  });
+});
+
+describe('keysFor', () => {
+  test('shows the Mac keys on a Mac', () => {
+    // Given: platform macOS
+    const nav = { userAgentData: { brands: [], platform: 'macOS' } };
+    // When / Then
+    expect(keysFor(nav)).toEqual(['⌘', '⇧', 'S']);
+  });
+
+  test('shows Ctrl Shift S on Windows and Linux', () => {
+    // Given: platform Windows; an older navigator with only navigator.platform on Linux
+    const windows = { userAgentData: { brands: [], platform: 'Windows' } };
+    const linux = { platform: 'Linux x86_64' };
+    // When / Then
+    expect([keysFor(windows), keysFor(linux)]).toEqual([
+      ['Ctrl', 'Shift', 'S'],
+      ['Ctrl', 'Shift', 'S'],
+    ]);
   });
 });
