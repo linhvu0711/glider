@@ -839,3 +839,50 @@ describe('choose the chat: loading and errors', () => {
     ).toHaveLength(7);
   });
 });
+
+describe('choose the chat: search', () => {
+  async function loggedInSearch() {
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    const user = setupUser();
+    renderSettings('default');
+    await advance(0);
+    return user;
+  }
+
+  test('filters chats by name under Results', async () => {
+    // Given: saved session Minh Anh, the chat list loaded
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), 'herm');
+    // Then
+    const results = screen.getByRole('radiogroup', { name: 'Results' });
+    expect(within(results).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Hermes',
+    ]);
+  });
+
+  test('filters chats by @username', async () => {
+    // Given: as above
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), '@glider');
+    // Then
+    const results = screen.getByRole('radiogroup', { name: 'Results' });
+    expect(within(results).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Glider News',
+    ]);
+  });
+
+  test('says no chat has that name', async () => {
+    // Given: as above
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), 'zzz');
+    // Then
+    expect(
+      screen.getByText(
+        'No chat named "zzz". Check the spelling, or open the chat in Telegram once so it shows here.',
+      ),
+    ).toBeTruthy();
+  });
+});

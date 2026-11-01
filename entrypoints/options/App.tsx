@@ -554,8 +554,22 @@ function useChatList(loggedIn: boolean, chats: TelegramChats) {
   return { list, retry: () => setTries((n) => n + 1) };
 }
 
+function matches(chat: Chat, query: string): boolean {
+  const text = query.replace(/^@/, '');
+  return (
+    chat.name.toLowerCase().includes(text) || (chat.username ?? '').toLowerCase().includes(text)
+  );
+}
+
 function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
   const { list, retry } = useChatList(loggedIn, chats);
+  const [query, setQuery] = useState('');
+  const typed = query.trim();
+  const searching = typed !== '';
+  const shown =
+    list.state === 'ready'
+      ? list.chats.filter((chat) => !searching || matches(chat, typed.toLowerCase())).slice(0, MAX_ROWS)
+      : [];
 
   return (
     <section
@@ -584,10 +598,12 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
               type="search"
               placeholder="Search your chats"
               aria-label="Search your chats"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
           </div>
           <h3 className="list-title" id="chat-list-title">
-            Recent chats
+            {searching ? 'Results' : 'Recent chats'}
           </h3>
           {list.state === 'error' ? (
             <div className="offline chat-error">
@@ -597,6 +613,10 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
                 Try again
               </button>
             </div>
+          ) : list.state === 'ready' && shown.length === 0 ? (
+            <p className="muted empty">
+              {`No chat named "${typed}". Check the spelling, or open the chat in Telegram once so it shows here.`}
+            </p>
           ) : (
             <div
               className="chat-list"
@@ -619,9 +639,7 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
                       </span>
                     </div>
                   ))
-                : list.chats
-                    .slice(0, MAX_ROWS)
-                    .map((chat) => <ChatRow key={chat.id} chat={chat} chats={chats} />)}
+                : shown.map((chat) => <ChatRow key={chat.id} chat={chat} chats={chats} />)}
             </div>
           )}
           <div className="save-row">

@@ -587,6 +587,13 @@ body {
   border-radius: var(--radius-control);
 }
 
+.empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
 .save-row {
   display: flex;
   align-items: center;
