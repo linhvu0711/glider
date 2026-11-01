@@ -161,3 +161,23 @@ describe('undo', () => {
     expect([await statuses(), telegram.sent.length]).toEqual([['sent'], 1]);
   });
 });
+
+describe('a page that waits', () => {
+  test('adds no second row for a page that waits', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { telegram, sender } = await setUp();
+    // When
+    const first = await sender.open(EXAMPLE);
+    await advance(1_000);
+    const second = await sender.open(EXAMPLE);
+    const rows = (await links()).length;
+    await advance(4_000);
+    // Then
+    expect([
+      second.kind,
+      first.kind === 'added' && second.kind === 'already' && second.id === first.id,
+      rows,
+      telegram.sent.length,
+    ]).toEqual(['already', true, 1, 1]);
+  });
+});

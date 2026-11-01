@@ -88,6 +88,11 @@ export function createSendService(telegram: TelegramSend): SendService {
         const account = await telegram.account();
         const chat = account === null ? null : targetChatFor(await targetChat.getValue(), account);
         if (account === null || !chat) return { kind: 'setup' };
+        const waiting = state.links.find(
+          (link) =>
+            link.page.url === page.url && (link.status === 'waiting' || link.status === 'sending'),
+        );
+        if (waiting) return { kind: 'already', chat, id: waiting.id };
         const now = Date.now();
         const link: Link = {
           id: crypto.randomUUID() as LinkId,
