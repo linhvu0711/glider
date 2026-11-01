@@ -9,7 +9,9 @@ export type FakeScenario =
   | 'qr-password'
   | 'qr-expire'
   | 'offline'
-  | 'revoked';
+  | 'revoked'
+  | 'chats-slow'
+  | 'chats-error';
 
 export const FAKE_SCENARIOS: FakeScenario[] = [
   'default',
@@ -19,6 +21,8 @@ export const FAKE_SCENARIOS: FakeScenario[] = [
   'qr-expire',
   'offline',
   'revoked',
+  'chats-slow',
+  'chats-error',
 ];
 
 export function isFakeScenario(value: string | undefined): value is FakeScenario {
@@ -168,9 +172,19 @@ export const FAKE_PHOTO =
       '<circle cx="80" cy="80" r="40" fill="#fff"/></svg>',
   );
 
-export function createFakeChats(_options: { scenario: FakeScenario }): TelegramChats {
+const CHATS_SLOW_MS = 5_000;
+
+// `chats-slow` and `chats-error` log in by phone like `default`; only the chat list differs.
+export function createFakeChats({ scenario }: { scenario: FakeScenario }): TelegramChats {
+  let lists = 0;
   return {
     async list() {
+      lists += 1;
+      if (scenario === 'chats-slow') await wait(CHATS_SLOW_MS);
+      if (scenario === 'chats-error' && lists === 1) {
+        await wait(OFFLINE_MS);
+        throw new Error('offline');
+      }
       return FAKE_CHATS;
     },
     async photo(id) {

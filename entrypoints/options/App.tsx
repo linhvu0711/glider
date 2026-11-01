@@ -526,19 +526,36 @@ const TAGS: Record<ChatKind, string> = {
   channel: 'Channel',
 };
 
-function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
-  const [list, setList] = useState<Chat[] | null>(null);
+type ChatsState = { state: 'loading' } | { state: 'ready'; chats: Chat[] } | { state: 'error' };
+
+const PLACEHOLDER_ROWS = 5;
+
+function useChatList(loggedIn: boolean, chats: TelegramChats) {
+  const [list, setList] = useState<ChatsState>({ state: 'loading' });
+  const [tries, setTries] = useState(0);
 
   useEffect(() => {
     if (!loggedIn) return;
     let live = true;
-    void chats.list().then((next) => {
-      if (live) setList(next);
-    });
+    setList({ state: 'loading' });
+    chats.list().then(
+      (next) => {
+        if (live) setList({ state: 'ready', chats: next });
+      },
+      () => {
+        if (live) setList({ state: 'error' });
+      },
+    );
     return () => {
       live = false;
     };
-  }, [loggedIn, chats]);
+  }, [loggedIn, chats, tries]);
+
+  return { list, retry: () => setTries((n) => n + 1) };
+}
+
+function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
+  const { list, retry } = useChatList(loggedIn, chats);
 
   return (
     <section
@@ -572,11 +589,41 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
           <h3 className="list-title" id="chat-list-title">
             Recent chats
           </h3>
-          <div className="chat-list" role="radiogroup" aria-labelledby="chat-list-title">
-            {list?.slice(0, MAX_ROWS).map((chat) => (
-              <ChatRow key={chat.id} chat={chat} chats={chats} />
-            ))}
-          </div>
+          {list.state === 'error' ? (
+            <div className="offline chat-error">
+              <AlertIcon className="offline-icon" width={20} height={20} />
+              <p className="offline-text">Could not load your chats. Check your internet.</p>
+              <button type="button" className="button" onClick={retry}>
+                Try again
+              </button>
+            </div>
+          ) : (
+            <div
+              className="chat-list"
+              role="radiogroup"
+              aria-labelledby="chat-list-title"
+              aria-busy={list.state === 'loading' ? 'true' : undefined}
+            >
+              {list.state === 'loading'
+                ? Array.from({ length: PLACEHOLDER_ROWS }, (_, i) => (
+                    <div
+                      key={i}
+                      className="chat-row chat-placeholder"
+                      data-testid="chat-placeholder"
+                      aria-hidden="true"
+                    >
+                      <span className="placeholder-circle" />
+                      <span className="chat-text">
+                        <span className="placeholder-bar placeholder-bar-long" />
+                        <span className="placeholder-bar" />
+                      </span>
+                    </div>
+                  ))
+                : list.chats
+                    .slice(0, MAX_ROWS)
+                    .map((chat) => <ChatRow key={chat.id} chat={chat} chats={chats} />)}
+            </div>
+          )}
           <div className="save-row">
             <button type="button" className="button button-save" disabled>
               Save

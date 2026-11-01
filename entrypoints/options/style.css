@@ -557,6 +557,36 @@ body {
   color: var(--accent);
 }
 
+.chat-placeholder {
+  cursor: default;
+}
+
+.placeholder-circle {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f3f4f6;
+}
+
+.placeholder-bar {
+  display: block;
+  width: 96px;
+  height: 10px;
+  border-radius: 4px;
+  background: #f3f4f6;
+}
+
+.placeholder-bar-long {
+  width: 160px;
+}
+
+.chat-error {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
 .save-row {
   display: flex;
   align-items: center;

@@ -796,3 +796,46 @@ describe('choose the chat', () => {
     expect(rowOf('Tuan Vu').querySelector('img')?.getAttribute('src')).toBe(FAKE_PHOTO);
   });
 });
+
+describe('choose the chat: loading and errors', () => {
+  test('shows grey rows while chats load', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When: chats take 5 s, advance 1 s
+    renderSettings('chats-slow');
+    await advance(1_000);
+    // Then
+    expect(screen.getAllByTestId('chat-placeholder')).toHaveLength(5);
+  });
+
+  test('says the chats could not load', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    // When: log in, then the first load fails after 1 s
+    renderSettings('chats-error');
+    await advance(0);
+    await advance(1_000);
+    // Then
+    const card = within(stepTwo());
+    expect([
+      !!card.getByText('Could not load your chats. Check your internet.'),
+      !!card.getByRole('button', { name: 'Try again' }),
+    ]).toEqual([true, true]);
+  });
+
+  test('Try again loads the chats', async () => {
+    // Given: saved session Minh Anh, the first load failed
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    const user = setupUser();
+    renderSettings('chats-error');
+    await advance(0);
+    await advance(1_000);
+    // When
+    await user.click(within(stepTwo()).getByRole('button', { name: 'Try again' }));
+    await advance(0);
+    // Then
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Recent chats' })).getAllByRole('radio'),
+    ).toHaveLength(7);
+  });
+});
