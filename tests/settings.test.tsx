@@ -1040,4 +1040,33 @@ describe('choose the chat: save', () => {
       (screen.getAllByRole('radio') as HTMLInputElement[]).some((radio) => radio.checked),
     ]).toEqual([5, 0, '', false]);
   });
+  test('another settings tab keeps the pick and the search', async () => {
+    // Given: Minh Anh logged in, Hermes found and picked, not saved
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    const auth = createFakeAuth({ scenario: 'default' });
+    const service = createLoginService(auth, 'Chromium on Linux');
+    const chats = createFakeChats({ scenario: 'default' });
+    const firstTab = document.body.appendChild(document.createElement('div'));
+    const secondTab = document.body.appendChild(document.createElement('div'));
+    render(<App connection={connectInMemory(service)} chats={chats} />, { container: firstTab });
+    await advance(0);
+    const first = within(firstTab);
+    await user.type(first.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
+    await user.click(first.getByRole('radio', { name: 'Hermes' }));
+    // When: a second settings tab opens, and the session check takes 1 s
+    const restore = auth.restore.bind(auth);
+    vi.spyOn(auth, 'restore').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      return restore();
+    });
+    render(<App connection={connectInMemory(service)} chats={chats} />, { container: secondTab });
+    await advance(0);
+    await advance(1_000);
+    // Then
+    expect([
+      (first.getByRole('searchbox', { name: 'Search your chats' }) as HTMLInputElement).value,
+      (first.getByRole('radio', { name: 'Hermes' }) as HTMLInputElement).checked,
+    ]).toEqual(['herm', true]);
+  });
 });
