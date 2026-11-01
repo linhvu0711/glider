@@ -158,6 +158,23 @@ function Note({ title, text }: { title?: string; text: string }) {
   );
 }
 
+function reasonOf(link: Link & { status: 'failed' }): string {
+  switch (link.failure.reason) {
+    case 'offline':
+      return 'Not sent: no internet';
+    case 'logged-out':
+      return 'Not sent: you were logged out';
+    case 'unreachable':
+      return `Not sent: can't reach ${link.chat.name}`;
+    case 'wait':
+      return 'Not sent: Telegram asks to wait';
+    case 'other':
+      return 'Not sent: something went wrong';
+    case 'closed':
+      return 'Not sent: Chrome closed first';
+  }
+}
+
 function Row({
   link,
   now,
@@ -196,7 +213,12 @@ function Row({
         {link.status === 'undone' && (
           <span className="row-state muted">Undone. Nothing was sent.</span>
         )}
-        {link.status === 'failed' && <span className="row-state row-state-red">Not sent</span>}
+        {link.status === 'failed' && (
+          <span className="row-state row-state-red row-reason">
+            <AlertIcon width={14} height={14} />
+            {reasonOf(link)}
+          </span>
+        )}
       </span>
       {waiting && (
         <button

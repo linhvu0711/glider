@@ -1,8 +1,16 @@
 import { browser } from 'wxt/browser';
 import { storage } from 'wxt/utils/storage';
 import { targetChat, targetChatFor } from '../target-chat';
-import type { TelegramSend } from '../telegram/send';
-import { isWebPage, type Link, type LinkId, type LinkStatus, type Opened, type Page, type Sends } from './state';
+import { SendError, type TelegramSend } from '../telegram/send';
+import {
+  isWebPage,
+  type Link,
+  type LinkFailure,
+  type LinkId,
+  type Opened,
+  type Page,
+  type Sends,
+} from './state';
 
 // The send service is the only writer of this item. The popup reads and watches it.
 export const sendList = storage.defineItem<Sends>('session:links', {
@@ -25,6 +33,14 @@ function badgeFor(links: Link[], sentAt: number | null, now: number) {
   if (waiting > 0) return { text: String(waiting), color: BLUE };
   if (sentAt !== null && now - sentAt < CHECK_MS) return { text: '✓', color: GREEN };
   return { text: '', color: BLUE };
+}
+
+function failureOf(e: unknown, now: number): LinkFailure {
+  if (!(e instanceof SendError)) return { reason: 'other' };
+  const { failure } = e;
+  return failure.reason === 'wait'
+    ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
+    : { reason: failure.reason };
 }
 
 export interface SendService {
@@ -65,10 +81,20 @@ export function createSendService(telegram: TelegramSend): SendService {
     await showBadge();
   }
 
-  function setStatus(id: LinkId, status: LinkStatus) {
+  function setStatus(id: LinkId, status: 'waiting' | 'sending' | 'sent' | 'undone') {
     return write({
       ...state,
-      links: state.links.map((link) => (link.id === id ? { ...link, status } : link)),
+      links: state.links.map((link): Link => (link.id === id ? { ...link, status } : link)),
+    });
+  }
+
+  // The only place a link turns failed.
+  function fail(id: LinkId, failure: LinkFailure) {
+    return write({
+      ...state,
+      links: state.links.map((link): Link =>
+        link.id === id ? { ...link, status: 'failed', failure } : link,
+      ),
     });
   }
 
@@ -95,22 +121,23 @@ export function createSendService(telegram: TelegramSend): SendService {
       if (!found) return undefined;
       // A log out while it waited means the link is not sent (the log out dialog says so).
       if ((await telegram.account()) !== found.account) {
-        await setStatus(id, 'failed');
+        await fail(id, { reason: 'logged-out' });
         return undefined;
       }
       await setStatus(id, 'sending');
       return found;
     });
     if (!link) return;
-    const sent = await telegram.sendText(link.chat.id, link.page.url).then(
-      () => true,
-      () => false,
+    const failure = await telegram.sendText(link.chat.id, link.page.url).then(
+      () => null,
+      (e: unknown) => failureOf(e, Date.now()),
     );
     await serial(() => {
-      if (sent) sentAt = Date.now();
-      return setStatus(id, sent ? 'sent' : 'failed');
+      if (failure) return fail(id, failure);
+      sentAt = Date.now();
+      return setStatus(id, 'sent');
     });
-    if (!sent) return;
+    if (failure) return;
     dropLater(id);
     setTimeout(() => void serial(showBadge), CHECK_MS);
   }
@@ -122,7 +149,12 @@ export function createSendService(telegram: TelegramSend): SendService {
         // A link that was in flight when the worker stopped may have gone: never send it twice.
         const links = saved.links
           .filter((link) => link.status !== 'sent' && link.status !== 'undone')
-          .map((link): Link => (link.status === 'sending' ? { ...link, status: 'failed' } : link));
+          .map(
+            (link): Link =>
+              link.status === 'sending'
+                ? { ...link, status: 'failed', failure: { reason: 'closed' } }
+                : link,
+          );
         await write({ ...saved, links });
         for (const link of links) if (link.status === 'waiting') schedule(link);
       });

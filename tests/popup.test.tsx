@@ -249,20 +249,76 @@ describe('popup states', () => {
       openSettings.mock.calls.length,
     ]).toEqual([true, null, 1]);
   });
+});
 
-  test('shows Not sent with Remove', async () => {
-    // Given: Linh Vu logged in, Read Later Bot saved
+// The fake fails a page whose address ends `#fail=<reason>` on its first send.
+function failing(reason: string): Page {
+  return { url: `https://example.com/#fail=${reason}`, title: 'Example Domain', icon: null };
+}
+
+describe('failed rows', () => {
+  test('says no internet on a failed row', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved, fake timers at 2026-11-01T10:00:00Z
     const { renderPopup } = await setUp();
-    const user = setupUser();
-    // When: the account logs out while the link waits
+    // When
+    renderPopup(failing('offline'));
+    await advance(5_000);
+    // Then
+    expect([!!screen.queryByText('Not sent: no internet'), screen.queryByText('Not sent')]).toEqual([
+      true,
+      null,
+    ]);
+  });
+
+  test('says you were logged out', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('logged-out'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: you were logged out')).toBe(true);
+  });
+
+  test('says you were logged out when the account left while it waited', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
     renderPopup(EXAMPLE);
     await advance(2_000);
     await storage.setItem('local:fakeSession', null);
     await advance(3_000);
-    const failed = !!screen.queryByText('Not sent');
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
-    await advance(0);
     // Then
-    expect([failed, !!screen.queryByText('Nothing waiting')]).toEqual([true, true]);
+    expect(!!screen.queryByText('Not sent: you were logged out')).toBe(true);
+  });
+
+  test("says it can't reach the chat", async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('unreachable'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText("Not sent: can't reach Read Later Bot")).toBe(true);
+  });
+
+  test('says Telegram asks to wait', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('wait-30'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: Telegram asks to wait')).toBe(true);
+  });
+
+  test('says something went wrong', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('other'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: something went wrong')).toBe(true);
   });
 });

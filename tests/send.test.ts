@@ -5,7 +5,8 @@ import { answerSend, connectSend } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import type { Page, Sends } from '../lib/send/state';
 import type { Account } from '../lib/telegram/auth';
-import { createFakeSend, FAKE_CHATS, LINH } from '../lib/telegram/fake';
+import { createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
+import type { SendError, TelegramSend } from '../lib/telegram/send';
 
 const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
 const EXAMPLE: Page = { url: 'https://example.com/', title: 'Example Domain', icon: null };
@@ -26,14 +27,14 @@ async function advance(ms: number) {
 async function setUp({
   account = LINH,
   saved = true,
-}: { account?: Account | null; saved?: boolean } = {}) {
+  telegram = createFakeSend(),
+}: { account?: Account | null; saved?: boolean; telegram?: FakeSend | TelegramSend } = {}) {
   await storage.setItem('local:fakeSession', account);
   if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
-  const telegram = createFakeSend();
   const service = createSendService(telegram);
   await service.start();
   const sender = connectSend((request) => answerSend(service)(request)!);
-  return { telegram, service, sender };
+  return { telegram: telegram as FakeSend, service, sender };
 }
 
 async function links() {
@@ -329,5 +330,68 @@ describe('worker wake-up and log out', () => {
     await advance(0);
     // Then
     expect(await links()).toEqual([]);
+  });
+});
+
+// The fake fails a page whose address ends `#fail=<reason>` on its first send.
+function failing(reason: string): Page {
+  return { url: `https://example.com/#fail=${reason}`, title: 'Example Domain', icon: null };
+}
+
+describe('failed sends', () => {
+  test('keeps when Telegram lets it send again', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { sender } = await setUp();
+    // When
+    await sender.open(failing('wait-30'));
+    await advance(5_000);
+    // Then
+    expect((await links())[0]).toMatchObject({
+      status: 'failed',
+      failure: { reason: 'wait', retryAt: Date.parse('2026-11-01T10:00:35Z') },
+    });
+  });
+
+  test('says something went wrong for an error with no reason', async () => {
+    // Given: as above, with a Telegram send that throws a plain error
+    const { sender } = await setUp({
+      telegram: {
+        account: async () => LINH.id,
+        sendText: async () => {
+          throw new Error('boom');
+        },
+      },
+    });
+    // When
+    await sender.open(EXAMPLE);
+    await advance(5_000);
+    // Then
+    const [link] = await links();
+    expect(link?.status === 'failed' ? link.failure : null).toEqual({ reason: 'other' });
+  });
+
+  test('keeps a failed link until Retry or Remove', async () => {
+    // Given: as the wait test
+    const { sender } = await setUp();
+    // When
+    await sender.open(failing('offline'));
+    await advance(60_000);
+    // Then
+    expect(await statuses()).toEqual(['failed']);
+  });
+
+  test('the fake fails a #fail page once, then sends it', async () => {
+    // Given
+    const telegram = createFakeSend();
+    // When
+    const first = await telegram
+      .sendText(READ_LATER.id, 'https://example.com/#fail=offline')
+      .catch((e: SendError) => e.failure);
+    await telegram.sendText(READ_LATER.id, 'https://example.com/#fail=offline');
+    // Then
+    expect([first, telegram.sent.map((m) => m.text)]).toEqual([
+      { reason: 'offline' },
+      ['https://example.com/#fail=offline'],
+    ]);
   });
 });

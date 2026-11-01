@@ -176,6 +176,12 @@ body {
   color: var(--red);
 }
 
+.row-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .note {
   display: flex;
   align-items: flex-start;

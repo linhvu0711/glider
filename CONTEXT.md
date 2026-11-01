@@ -31,3 +31,7 @@ _Avoid_: delay, grace period
 **Send limit**:
 At most 10 sends per minute.
 _Avoid_: throttle
+
+**Failed link**:
+A link that did not reach Telegram. It stays in the popup with Retry and Remove until the user acts.
+_Avoid_: error, returned
