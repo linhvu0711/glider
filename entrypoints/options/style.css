@@ -190,7 +190,8 @@ body {
   align-items: center;
   gap: 4px;
   margin-left: auto;
-  padding: 3px 10px;
+  height: 22px;
+  padding: 0 10px;
   border-radius: 999px;
   background: #f0fdf4;
   color: var(--green);
@@ -449,4 +450,23 @@ body {
   margin: 0;
   font-size: 14px;
   color: var(--text);
+}
+
+/* Fonts keep different space under the baseline (Linux's Nimbus Sans keeps a lot), so a
+   centered line box put the letters 3 px high there. Trimming each line to cap height and
+   baseline centers the letters themselves, in any font. */
+.header-title,
+.header-sub,
+.header-account > span,
+.badge > span,
+.avatar > span,
+.card-title,
+.chip-done > span,
+.account-text,
+.button,
+.button-plain,
+.banner-text,
+.banner .link,
+.offline-text {
+  text-box: trim-both cap alphabetic;
 }

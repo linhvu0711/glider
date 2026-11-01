@@ -31,10 +31,10 @@ export default function App({ connection }: { connection?: LoginConnection }) {
           {view?.login.step === 'done' ? (
             <>
               <Avatar account={view.login.account} size={28} />
-              {view.login.account.name}
+              <span>{view.login.account.name}</span>
             </>
           ) : (
-            'Not logged in'
+            <span>Not logged in</span>
           )}
         </span>
       </header>
@@ -144,7 +144,7 @@ function Avatar({ account, size }: { account: Account; size: number }) {
       className="avatar"
       style={{ width: size, height: size, fontSize: size >= 40 ? 15 : 12 }}
     >
-      {account.initials}
+      <span>{account.initials}</span>
     </span>
   );
 }
@@ -157,7 +157,9 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
   return (
     <section className="card" aria-labelledby="step-1-title">
       <div className="card-head">
-        <span className={done ? 'badge badge-done' : 'badge'}>1</span>
+        <span className={done ? 'badge badge-done' : 'badge'}>
+          <span>1</span>
+        </span>
         <h2 className="card-title" id="step-1-title">
           Log in to Telegram
         </h2>
@@ -195,7 +197,7 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
       {login.step === 'done' && (
         <div className="account-row">
           <Avatar account={login.account} size={40} />
-          <div>
+          <div className="account-text">
             <div className="account-name">{login.account.name}</div>
             <div className="muted">{`Shown in Telegram as "Glider · ${login.device}".`}</div>
           </div>
