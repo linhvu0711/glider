@@ -107,11 +107,30 @@ body {
   object-fit: cover;
 }
 
-/* Trimming each line to cap height and baseline centers the letters in any font
-   (see the settings page's style.css). */
+/* Center the letters, not the line. Fonts keep different space above and below the
+   letters (Linux's Nimbus Sans keeps a lot under the baseline), so text centered against
+   an icon, a picture, or a box of fixed height sat up to 3 px high. Trimming each line to
+   cap height and baseline centers the letters in any font. The first lines are patterns,
+   so new text in them is covered: every button label (a text link sits in its line, so
+   not those), text right after an icon, the text beside a chat picture, and the letters in
+   an avatar or a key. Then the named places. */
+button:not(.link),
+svg + span,
+.chat-text > *,
 .avatar > span,
-.button,
-.button-plain {
+.key > span,
+.header-title,
+.header-sub,
+.header-account > span,
+.badge > span,
+.card-title,
+.chip-done > span,
+.account-text,
+.banner-text,
+.banner .link,
+.offline-text,
+.chat-tag,
+.list-title {
   text-box: trim-both cap alphabetic;
 }
 

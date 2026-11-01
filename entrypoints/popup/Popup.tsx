@@ -240,7 +240,7 @@ function Row({
         {link.status === 'failed' && (
           <span className="row-state row-state-red row-reason">
             <AlertIcon width={14} height={14} />
-            {reasonOf(link)}
+            <span>{reasonOf(link)}</span>
           </span>
         )}
         {link.status === 'failed' && (

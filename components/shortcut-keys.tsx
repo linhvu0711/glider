@@ -6,7 +6,7 @@ export function ShortcutKeys() {
     <span className="keys" aria-label={keys.join('+')}>
       {keys.map((key) => (
         <kbd key={key} className="key" aria-hidden="true">
-          {key}
+          <span>{key}</span>
         </kbd>
       ))}
     </span>
