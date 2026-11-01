@@ -38,7 +38,7 @@ async function setUp({
 }
 
 async function links() {
-  return (await storage.getItem<Sends>('session:links'))?.links ?? [];
+  return (await storage.getItem<Sends>('local:links'))?.links ?? [];
 }
 
 async function statuses() {
@@ -62,14 +62,14 @@ describe('send', () => {
     ]);
   });
 
-  test('keeps the waiting link in session storage', async () => {
+  test('keeps the waiting link in local storage', async () => {
     // Given: as above
     const { sender } = await setUp();
     // When
     await sender.open(EXAMPLE);
     await advance(0);
     // Then
-    expect(await storage.getItem('session:links')).toEqual({
+    expect(await storage.getItem('local:links')).toEqual({
       links: [
         {
           id: expect.any(String),
@@ -274,7 +274,8 @@ describe('worker wake-up and log out', () => {
       sendAt,
       status,
     });
-    await storage.setItem('session:links', {
+    await storage.setItem('session:browserOpen', true);
+    await storage.setItem('local:links', {
       links: [
         link('a', EXAMPLE, 'waiting', Date.parse('2026-11-01T10:00:03Z')),
         link('b', EXAMPLE_ORG, 'sending', Date.parse('2026-11-01T09:59:59Z')),
@@ -588,5 +589,67 @@ describe('notifications', () => {
       Object.keys(await fakeBrowser.notifications.getAll()).length,
       create.mock.calls.length,
     ]).toEqual([1, 2]);
+  });
+});
+
+describe('Chrome restart', () => {
+  // A waiting link due at 10:00:03 and a link that failed earlier, saved before Chrome closed.
+  async function savedBeforeClose() {
+    await storage.setItem('local:fakeSession', LINH);
+    await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+    const base = { account: LINH.id, chat: READ_LATER };
+    await storage.setItem('local:links', {
+      links: [
+        { ...base, id: 'a', page: EXAMPLE, sendAt: Date.parse('2026-11-01T10:00:03Z'), status: 'waiting' },
+        {
+          ...base,
+          id: 'b',
+          page: EXAMPLE_ORG,
+          sendAt: Date.parse('2026-11-01T09:59:00Z'),
+          status: 'failed',
+          failure: { reason: 'unreachable' },
+        },
+      ],
+      times: [],
+    });
+  }
+
+  test('a link that waited when Chrome closed comes back as not sent', async () => {
+    // Given: the links saved before Chrome closed; session storage is empty, as after a restart
+    await savedBeforeClose();
+    const telegram = createFakeSend();
+    const service = createSendService(telegram);
+    // When
+    await service.start();
+    await advance(5_000);
+    // Then
+    expect([
+      (await links()).map((l) => [l.page.url, l.status, l.status === 'failed' ? l.failure : null]),
+      telegram.sent,
+    ]).toEqual([
+      [
+        ['https://example.com/', 'failed', { reason: 'closed' }],
+        ['https://example.org/', 'failed', { reason: 'unreachable' }],
+      ],
+      [],
+    ]);
+  });
+
+  test('starting twice after a restart changes nothing more', async () => {
+    // Given: as above
+    await savedBeforeClose();
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    const telegram = createFakeSend();
+    const service = createSendService(telegram);
+    // When
+    await service.start();
+    await service.start();
+    await advance(5_000);
+    // Then
+    expect([await statuses(), create.mock.calls.length, telegram.sent]).toEqual([
+      ['failed', 'failed'],
+      1,
+      [],
+    ]);
   });
 });

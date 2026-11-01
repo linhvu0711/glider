@@ -13,10 +13,15 @@ import {
   type Sends,
 } from './state';
 
-// The send service is the only writer of this item. The popup reads and watches it.
-export const sendList = storage.defineItem<Sends>('session:links', {
+// Local, so the links outlive a Chrome restart. The send service is the only writer of
+// this item; the popup reads and watches it.
+export const sendList = storage.defineItem<Sends>('local:links', {
   fallback: { links: [], times: [] },
 });
+
+// Chrome empties session storage when it closes, so false at start means Chrome started
+// again, not a worker waking up. The send service is its only writer.
+const browserOpen = storage.defineItem<boolean>('session:browserOpen', { fallback: false });
 
 export const UNDO_MS = 5_000;
 // How long a sent link stays in the popup.
@@ -182,17 +187,21 @@ export function createSendService(telegram: TelegramSend): SendService {
     start() {
       return serial(async () => {
         const saved = await sendList.getValue();
-        // A link that was in flight when the worker stopped may have gone: never send it twice.
-        const links = saved.links
-          .filter((link) => link.status !== 'sent' && link.status !== 'undone')
-          .map(
-            (link): Link =>
-              link.status === 'sending'
-                ? { ...link, status: 'failed', failure: { reason: 'closed' } }
-                : link,
-          );
+        const links = saved.links.filter(
+          (link) => link.status !== 'sent' && link.status !== 'undone',
+        );
         await write({ ...saved, links });
-        for (const link of links) if (link.status === 'waiting') schedule(link);
+        const restarted = !(await browserOpen.getValue());
+        for (const link of links) {
+          // A link that was in flight when the worker stopped may have gone: never send it twice.
+          // A failed link never sends by itself, so one Chrome closed on does not either.
+          if (link.status === 'sending' || (link.status === 'waiting' && restarted)) {
+            await fail(link.id, { reason: 'closed' });
+          } else if (link.status === 'waiting') {
+            schedule(link);
+          }
+        }
+        await browserOpen.setValue(true);
       });
     },
 

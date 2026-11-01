@@ -486,3 +486,31 @@ describe('failed row actions', () => {
     ]).toEqual([true, true]);
   });
 });
+
+describe('after a restart', () => {
+  test('says Chrome closed first after a restart', async () => {
+    // Given: a waiting link saved before Chrome closed; session storage is empty
+    await storage.setItem('local:links', {
+      links: [
+        {
+          id: 'a',
+          page: EXAMPLE,
+          account: LINH.id,
+          chat: READ_LATER,
+          sendAt: Date.parse('2026-11-01T10:00:03Z'),
+          status: 'waiting',
+        },
+      ],
+      times: [],
+    });
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(null);
+    await advance(0);
+    // Then
+    expect([
+      !!screen.queryByText('Not sent: Chrome closed first'),
+      !!screen.queryByRole('button', { name: 'Retry' }),
+    ]).toEqual([true, true]);
+  });
+});
