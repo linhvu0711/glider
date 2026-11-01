@@ -7,7 +7,13 @@ import { connectInMemory } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
-import { createFakeAuth, createFakeChats, FAKE_PHOTO, type FakeScenario } from '../lib/telegram/fake';
+import {
+  createFakeAuth,
+  createFakeChats,
+  FAKE_CHATS,
+  FAKE_PHOTO,
+  type FakeScenario,
+} from '../lib/telegram/fake';
 
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date('2026-10-31T10:00:00Z') });
@@ -884,5 +890,102 @@ describe('choose the chat: search', () => {
         'No chat named "zzz". Check the spelling, or open the chat in Telegram once so it shows here.',
       ),
     ).toBeTruthy();
+  });
+});
+
+describe('choose the chat: save', () => {
+  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot');
+  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes');
+
+  async function loggedIn() {
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    const user = setupUser();
+    renderSettings('default');
+    await advance(0);
+    return user;
+  }
+
+  test('picking another chat turns on Save and names it', async () => {
+    // Given: saved session Minh Anh, nothing saved in local:targetChat
+    const user = await loggedIn();
+    // When
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    // Then
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect([save.disabled, !!screen.getByText('Links will go to Read Later Bot.')]).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  test('Save shows the toast and the Done chip', async () => {
+    // Given: Read Later Bot picked
+    const user = await loggedIn();
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    // When
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await advance(0);
+    // Then
+    expect([
+      screen.getByRole('status').textContent,
+      !!within(stepTwo()).getByText('Done'),
+      await storage.getItem('local:targetChat'),
+    ]).toEqual(['Saved. Links now go to Read Later Bot.', true, READ_LATER]);
+  });
+
+  test('shows the saved chat first with the tag Current', async () => {
+    // Given: Hermes saved
+    await storage.setItem('local:targetChat', HERMES);
+    // When
+    await loggedIn();
+    // Then
+    const first = screen.getAllByRole('radio')[0] as HTMLInputElement;
+    expect([
+      first.getAttribute('aria-label'),
+      first.checked,
+      first.closest('label')?.textContent?.endsWith('Current'),
+      (screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled,
+      !!screen.getByText('Links go to Hermes.'),
+    ]).toEqual(['Hermes', true, true, true, true]);
+  });
+
+  test('keeps the saved chat after a restart', async () => {
+    // Given: Read Later Bot saved, then the page closed
+    const user = await loggedIn();
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await advance(0);
+    cleanup();
+    // When: a new page with a new service and a new fake
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const first = screen.getAllByRole('radio')[0] as HTMLInputElement;
+    expect([
+      first.getAttribute('aria-label'),
+      first.checked,
+      !!within(stepTwo()).getByText('Done'),
+    ]).toEqual(['Read Later Bot', true, true]);
+  });
+
+  test('two tabs that save the same chat keep one saved chat', async () => {
+    // Given: saved session Minh Anh, two pages
+    await storage.setItem('local:fakeSession', MINH_SESSION);
+    const user = setupUser();
+    const tabs = [document.createElement('div'), document.createElement('div')];
+    for (const tab of tabs) {
+      document.body.appendChild(tab);
+      renderSettings('default', { container: tab });
+    }
+    await advance(0);
+    // When: each page picks Read Later Bot and saves
+    for (const tab of tabs) {
+      await user.click(within(tab).getByRole('radio', { name: 'Read Later Bot' }));
+      const save = within(tab).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+      if (!save.disabled) await user.click(save);
+      await advance(0);
+    }
+    // Then
+    expect(await storage.getItem('local:targetChat')).toEqual(READ_LATER);
   });
 });

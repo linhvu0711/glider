@@ -594,6 +594,24 @@ body {
   border-radius: var(--radius-control);
 }
 
+.button-save:disabled {
+  opacity: 1;
+  background: #f3f4f6;
+  color: var(--text-3);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: var(--text);
+  color: #fff;
+  font-size: 14px;
+}
+
 .save-row {
   display: flex;
   align-items: center;

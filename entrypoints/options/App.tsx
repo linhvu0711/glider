@@ -7,6 +7,7 @@ import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
+import { targetChat } from '../../lib/target-chat';
 import {
   AlertIcon,
   BookmarkIcon,
@@ -561,15 +562,68 @@ function matches(chat: Chat, query: string): boolean {
   );
 }
 
+const TOAST_MS = 4_000;
+
+function useTargetChat(): Chat | null | undefined {
+  const [saved, setSaved] = useState<Chat | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void targetChat.getValue().then((value) => {
+      if (live) setSaved(value);
+    });
+    const unwatch = targetChat.watch((value) => setSaved(value));
+    return () => {
+      live = false;
+      unwatch();
+    };
+  }, []);
+  return saved;
+}
+
 function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
   const { list, retry } = useChatList(loggedIn, chats);
+  const saved = useTargetChat();
+  const [picked, setPicked] = useState<ChatId | null>(null);
+  // The saved chat moves to the top once per load, never under the pointer at Save.
+  const [pinned, setPinned] = useState<Chat | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const savedKnown = saved !== undefined;
+
+  useEffect(() => {
+    if (saved) setPicked((current) => current ?? saved.id);
+  }, [saved]);
+
+  useEffect(() => {
+    if (list.state === 'ready' && savedKnown) setPinned(saved ?? null);
+    // Only a new load moves the saved chat; a Save after it does not.
+  }, [list, savedKnown]);
+
+  useEffect(() => {
+    if (toast === null) return;
+    const id = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const loaded = list.state === 'ready' ? list.chats : [];
+  const ordered = pinned
+    ? [loaded.find((chat) => chat.id === pinned.id) ?? pinned, ...loaded.filter((chat) => chat.id !== pinned.id)]
+    : loaded;
   const typed = query.trim();
   const searching = typed !== '';
-  const shown =
-    list.state === 'ready'
-      ? list.chats.filter((chat) => !searching || matches(chat, typed.toLowerCase())).slice(0, MAX_ROWS)
-      : [];
+  const shown = ordered
+    .filter((chat) => !searching || matches(chat, typed.toLowerCase()))
+    .slice(0, MAX_ROWS);
+  const pickedChat =
+    ordered.find((chat) => chat.id === picked) ?? (saved && saved.id === picked ? saved : null);
+  const done = loggedIn && !!saved;
+  const changed = pickedChat !== null && pickedChat.id !== saved?.id;
+
+  async function save() {
+    if (!pickedChat) return;
+    await targetChat.setValue(pickedChat);
+    setToast(`Saved. Links now go to ${pickedChat.name}.`);
+  }
 
   return (
     <section
@@ -579,12 +633,18 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
       inert={!loggedIn}
     >
       <div className="card-head">
-        <span className="badge">
+        <span className={done ? 'badge badge-done' : 'badge'}>
           <span>2</span>
         </span>
         <h2 className="card-title" id="step-2-title">
           Choose the chat
         </h2>
+        {done && (
+          <span className="chip-done">
+            <CheckIcon width={14} height={14} />
+            <span>Done</span>
+          </span>
+        )}
       </div>
       <p className="muted card-line">
         Links go to this one chat, sent by you. You can change it any time.
@@ -639,30 +699,78 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
                       </span>
                     </div>
                   ))
-                : shown.map((chat) => <ChatRow key={chat.id} chat={chat} chats={chats} />)}
+                : shown.map((chat) => (
+                    <ChatRow
+                      key={chat.id}
+                      chat={chat}
+                      chats={chats}
+                      current={chat.id === saved?.id}
+                      checked={chat.id === picked}
+                      onPick={() => setPicked(chat.id)}
+                    />
+                  ))}
             </div>
           )}
           <div className="save-row">
-            <button type="button" className="button button-save" disabled>
+            <button
+              type="button"
+              className="button button-save"
+              disabled={!changed}
+              onClick={() => void save()}
+            >
               Save
             </button>
+            {pickedChat && (
+              <span className="muted">
+                {changed
+                  ? `Links will go to ${pickedChat.name}.`
+                  : `Links go to ${pickedChat.name}.`}
+              </span>
+            )}
           </div>
         </>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
       )}
     </section>
   );
 }
 
-function ChatRow({ chat, chats }: { chat: Chat; chats: TelegramChats }) {
+function ChatRow({
+  chat,
+  chats,
+  current,
+  checked,
+  onPick,
+}: {
+  chat: Chat;
+  chats: TelegramChats;
+  current: boolean;
+  checked: boolean;
+  onPick: () => void;
+}) {
   return (
     <label className="chat-row">
-      <input type="radio" name="target-chat" aria-label={chat.name} />
+      <input
+        type="radio"
+        name="target-chat"
+        aria-label={chat.name}
+        checked={checked}
+        onChange={onPick}
+      />
       <ChatAvatar chat={chat} chats={chats} />
       <span className="chat-text">
         <span className="chat-name">{chat.name}</span>
         <span className="muted">{chat.detail}</span>
       </span>
-      <span className="chat-tag">{TAGS[chat.kind]}</span>
+      {current ? (
+        <span className="chat-tag chat-tag-current">Current</span>
+      ) : (
+        <span className="chat-tag">{TAGS[chat.kind]}</span>
+      )}
     </label>
   );
 }
