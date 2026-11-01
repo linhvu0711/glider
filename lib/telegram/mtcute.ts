@@ -303,10 +303,17 @@ export function createMtcuteChats(client: MtcuteClient): TelegramChats {
       return self ? [self, ...chats] : chats;
     },
     async photo(id) {
-      const photo = peers.get(id)?.photo;
-      if (!photo) return null;
       try {
-        return photoUrl(await client.get().downloadAsBuffer(photo.small));
+        const t = client.get();
+        let peer = peers.get(id);
+        if (!peer) {
+          // The popup asks with no list before it, often in a worker that just woke up.
+          await t.start({});
+          peer = await t.getPeer(id);
+          peers.set(id, peer);
+        }
+        if (!peer.photo) return null;
+        return photoUrl(await t.downloadAsBuffer(peer.photo.small));
       } catch {
         return null;
       }

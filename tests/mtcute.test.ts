@@ -2,6 +2,7 @@ import { Chat, Long, tl, User } from '@mtcute/web';
 import { describe, expect, test } from 'vitest';
 import type { ChatId } from '../lib/telegram/chats';
 import {
+  createMtcuteChats,
   createMtcuteSend,
   mtcuteClientOptions,
   photoUrl,
@@ -136,6 +137,34 @@ describe('mtcute chat list edges', () => {
     const url = photoUrl(bytes);
     // Then
     expect(url).toBe('data:image/jpeg;base64,/9j/');
+  });
+});
+
+describe('mtcute chat photo', () => {
+  test('loads the photo of a chat that was not listed first', async () => {
+    // Given: a stub client that knows chat 7001 and its small photo; no list ran
+    const calls: string[] = [];
+    const tg = {
+      start: async () => {
+        calls.push('start');
+      },
+      getPeer: async (id: number) => {
+        calls.push(`getPeer ${id}`);
+        return { photo: { small: 'small-7001' } };
+      },
+      downloadAsBuffer: async (location: string) => {
+        calls.push(`download ${location}`);
+        return new Uint8Array([255, 216, 255]);
+      },
+    };
+    const stub = { get: () => tg, reset: async () => {} } as unknown as MtcuteClient;
+    // When
+    const url = await createMtcuteChats(stub).photo(7001 as ChatId);
+    // Then
+    expect([url, calls]).toEqual([
+      'data:image/jpeg;base64,/9j/',
+      ['start', 'getPeer 7001', 'download small-7001'],
+    ]);
   });
 });
 
