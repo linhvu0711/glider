@@ -1004,4 +1004,40 @@ describe('choose the chat: save', () => {
       within(stepTwo()).queryByText('Done'),
     ]).toEqual(['Saved Messages', false, null, null]);
   });
+
+  test('log out clears the list, the pick, and the search', async () => {
+    // Given: Minh Anh logged in, chats take 5 s, Hermes found and picked
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    renderSettings('chats-slow');
+    await advance(0);
+    await advance(5_000);
+    await user.type(screen.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
+    await user.click(screen.getByRole('radio', { name: 'Hermes' }));
+    // When: log out, then log in again by phone
+    await user.click(
+      within(screen.getByRole('contentinfo')).getByRole('button', { name: 'Log out' }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Log out' }),
+    );
+    await advance(0);
+    await openPhoneStep(user);
+    await user.type(screen.getByLabelText('Phone number'), '912 345 678');
+    await user.click(screen.getByRole('button', { name: 'Send code' }));
+    await advance(0);
+    await user.keyboard('12345');
+    await advance(0);
+    // Then: grey rows while the list loads, then nothing picked and no search
+    const loading = [
+      screen.getAllByTestId('chat-placeholder').length,
+      screen.queryAllByRole('radio').length,
+    ];
+    await advance(5_000);
+    expect([
+      ...loading,
+      (screen.getByRole('searchbox', { name: 'Search your chats' }) as HTMLInputElement).value,
+      (screen.getAllByRole('radio') as HTMLInputElement[]).some((radio) => radio.checked),
+    ]).toEqual([5, 0, '', false]);
+  });
 });

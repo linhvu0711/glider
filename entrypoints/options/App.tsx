@@ -58,7 +58,9 @@ export default function App({
           {view.notice && <LoggedOutBanner send={connection.send} />}
           <LoginCard login={view.login} send={connection.send} />
           {chats && (
+            // A new key per account: no list, pick, or search stays from the last account.
             <TargetCard
+              key={view.login.step === 'done' ? view.login.account.id : 'none'}
               account={view.login.step === 'done' ? view.login.account : null}
               chats={chats}
             />
