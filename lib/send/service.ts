@@ -92,7 +92,13 @@ export function createSendService(telegram: TelegramSend): SendService {
     timers.delete(id);
     const link = await serial(async () => {
       const found = state.links.find((l) => l.id === id && l.status === 'waiting');
-      if (found) await setStatus(id, 'sending');
+      if (!found) return undefined;
+      // A log out while it waited means the link is not sent (the log out dialog says so).
+      if ((await telegram.account()) !== found.account) {
+        await setStatus(id, 'failed');
+        return undefined;
+      }
+      await setStatus(id, 'sending');
       return found;
     });
     if (!link) return;
@@ -112,7 +118,13 @@ export function createSendService(telegram: TelegramSend): SendService {
   return {
     start() {
       return serial(async () => {
-        state = await sendList.getValue();
+        const saved = await sendList.getValue();
+        // A link that was in flight when the worker stopped may have gone: never send it twice.
+        const links = saved.links
+          .filter((link) => link.status !== 'sent' && link.status !== 'undone')
+          .map((link): Link => (link.status === 'sending' ? { ...link, status: 'failed' } : link));
+        await write({ ...saved, links });
+        for (const link of links) if (link.status === 'waiting') schedule(link);
       });
     },
 
@@ -156,6 +168,10 @@ export function createSendService(telegram: TelegramSend): SendService {
       });
     },
 
-    async remove() {},
+    remove(id) {
+      return serial(async () => {
+        if (state.links.some((link) => link.id === id && link.status === 'failed')) await drop(id);
+      });
+    },
   };
 }

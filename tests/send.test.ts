@@ -258,3 +258,76 @@ describe('badge', () => {
     expect([waiting, sent, await badge()]).toEqual(['2', '✓', '']);
   });
 });
+
+describe('worker wake-up and log out', () => {
+  test('a new worker picks up the links that wait', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the store holds a waiting link due at
+    // 10:00:03, a link in flight, and a sent link
+    await storage.setItem('local:fakeSession', LINH);
+    await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+    const link = (id: string, page: Page, status: string, sendAt: number) => ({
+      id,
+      page,
+      account: LINH.id,
+      chat: READ_LATER,
+      sendAt,
+      status,
+    });
+    await storage.setItem('session:links', {
+      links: [
+        link('a', EXAMPLE, 'waiting', Date.parse('2026-11-01T10:00:03Z')),
+        link('b', EXAMPLE_ORG, 'sending', Date.parse('2026-11-01T09:59:59Z')),
+        link(
+          'c',
+          { url: 'https://example.net/', title: 'Example Domain', icon: null },
+          'sent',
+          Date.parse('2026-11-01T09:59:58Z'),
+        ),
+      ],
+      times: [],
+    });
+    const telegram = createFakeSend();
+    const service = createSendService(telegram);
+    // When
+    await service.start();
+    await service.start();
+    await advance(3_000);
+    // Then
+    expect([
+      (await links()).map((l) => [l.page.url, l.status]),
+      telegram.sent.map((message) => message.text),
+    ]).toEqual([
+      [
+        ['https://example.com/', 'sent'],
+        ['https://example.org/', 'failed'],
+      ],
+      ['https://example.com/'],
+    ]);
+  });
+
+  test('sends nothing when the account logged out while it waited', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { telegram, sender } = await setUp();
+    // When
+    await sender.open(EXAMPLE);
+    await advance(2_000);
+    await storage.setItem('local:fakeSession', null);
+    await advance(3_000);
+    // Then
+    expect([await statuses(), telegram.sent]).toEqual([['failed'], []]);
+  });
+
+  test('Remove takes away a link that was not sent', async () => {
+    // Given: a link that failed because the account logged out
+    const { sender } = await setUp();
+    const opened = await sender.open(EXAMPLE);
+    await advance(2_000);
+    await storage.setItem('local:fakeSession', null);
+    await advance(3_000);
+    // When
+    if (opened.kind === 'added') await sender.remove(opened.id);
+    await advance(0);
+    // Then
+    expect(await links()).toEqual([]);
+  });
+});
