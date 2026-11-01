@@ -114,3 +114,23 @@ body {
 .button-plain {
   text-box: trim-both cap alphabetic;
 }
+
+.keys {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+}
