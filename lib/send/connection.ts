@@ -33,7 +33,7 @@ export function answerSend(service: SendService): (message: unknown) => Promise<
 }
 
 export interface SendConnection {
-  open(page: Page): Promise<Opened>;
+  open(page: Page | null): Promise<Opened>;
   undo(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
 }

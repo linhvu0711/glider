@@ -223,3 +223,19 @@ describe('send limit', () => {
     expect(opened.kind).toBe('added');
   });
 });
+
+describe('not a web page', () => {
+  test('says pages that are not web pages have nothing to send', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { sender } = await setUp();
+    // When: no page, a New Tab page, a file
+    const kinds = [
+      (await sender.open(null)).kind,
+      (await sender.open({ url: 'chrome://newtab/', title: 'New Tab', icon: null })).kind,
+      (await sender.open({ url: 'file:///home/linh/notes.txt', title: 'notes.txt', icon: null }))
+        .kind,
+    ];
+    // Then
+    expect([kinds, await links()]).toEqual([['not-web', 'not-web', 'not-web'], []]);
+  });
+});

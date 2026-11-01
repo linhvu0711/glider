@@ -1,7 +1,7 @@
 import { storage } from 'wxt/utils/storage';
 import { targetChat, targetChatFor } from '../target-chat';
 import type { TelegramSend } from '../telegram/send';
-import type { Link, LinkId, LinkStatus, Opened, Page, Sends } from './state';
+import { isWebPage, type Link, type LinkId, type LinkStatus, type Opened, type Page, type Sends } from './state';
 
 // The send service is the only writer of this item. The popup reads and watches it.
 export const sendList = storage.defineItem<Sends>('session:links', {
@@ -17,7 +17,8 @@ const LIMIT_MS = 60_000;
 export interface SendService {
   /** Loads the saved links; the worker calls it each time it wakes. */
   start(): Promise<void>;
-  open(page: Page): Promise<Opened>;
+  /** `page` is null when the tab has no address the extension may read. */
+  open(page: Page | null): Promise<Opened>;
   undo(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
 }
@@ -90,6 +91,7 @@ export function createSendService(telegram: TelegramSend): SendService {
         const account = await telegram.account();
         const chat = account === null ? null : targetChatFor(await targetChat.getValue(), account);
         if (account === null || !chat) return { kind: 'setup' };
+        if (!page || !isWebPage(page.url)) return { kind: 'not-web', chat };
         const waiting = state.links.find(
           (link) =>
             link.page.url === page.url && (link.status === 'waiting' || link.status === 'sending'),
