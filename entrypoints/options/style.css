@@ -528,3 +528,17 @@
 .list-title {
   text-box: trim-both cap alphabetic;
 }
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shortcut-change {
+  margin-left: auto;
+}
+
+.pin-hint {
+  margin: 12px 0 0;
+}

@@ -8,7 +8,9 @@ import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
 import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
+import { browser } from 'wxt/browser';
 import { ChatAvatar } from '../../components/chat-avatar';
+import { ShortcutKeys } from '../../components/shortcut-keys';
 import {
   AlertIcon,
   CheckIcon,
@@ -72,6 +74,7 @@ export default function App({
             // A new key per account: no list, pick, or search stays from the last account.
             <TargetCard key={chatAccount?.id ?? 'none'} account={chatAccount} chats={chats} />
           )}
+          <SendFasterCard />
         </>
       )}
       <footer className="footer">
@@ -748,6 +751,36 @@ function TargetCard({ account, chats }: { account: Account | null; chats: Telegr
           {toast}
         </div>
       )}
+    </section>
+  );
+}
+
+// Nothing to do here, so the step is never greyed and has no Done chip.
+function SendFasterCard() {
+  return (
+    <section className="card" aria-labelledby="step-3-title">
+      <div className="card-head">
+        <span className="badge">
+          <span>3</span>
+        </span>
+        <h2 className="card-title" id="step-3-title">
+          Send faster
+        </h2>
+      </div>
+      <div className="shortcut-row">
+        <ShortcutKeys />
+        <span>sends the page you are on.</span>
+        <button
+          type="button"
+          className="link shortcut-change"
+          onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}
+        >
+          Change shortcut
+        </button>
+      </div>
+      <p className="muted pin-hint">
+        Pin Glider to the toolbar so one click sends. Extensions menu → pin next to Glider.
+      </p>
     </section>
   );
 }

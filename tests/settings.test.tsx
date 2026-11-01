@@ -1,6 +1,7 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { connectInMemory } from '../lib/login/connection';
@@ -1068,5 +1069,42 @@ describe('choose the chat: save', () => {
       (first.getByRole('searchbox', { name: 'Search your chats' }) as HTMLInputElement).value,
       (first.getByRole('radio', { name: 'Hermes' }) as HTMLInputElement).checked,
     ]).toEqual(['herm', true]);
+  });
+});
+
+describe('send faster', () => {
+  function stepThree() {
+    return screen.getByRole('region', { name: 'Send faster' });
+  }
+
+  test('shows step 3 Send faster with the shortcut', async () => {
+    // Given: the settings page, not logged in
+    renderSettings('default');
+    await advance(0);
+    // When
+    const step = within(stepThree());
+    // Then
+    expect([
+      step.getByLabelText('Ctrl+Shift+S').getAttribute('aria-label'),
+      !!step.getByText('sends the page you are on.'),
+      !!step.getByRole('button', { name: 'Change shortcut' }),
+      !!step.getByText(
+        'Pin Glider to the toolbar so one click sends. Extensions menu → pin next to Glider.',
+      ),
+    ]).toEqual(['Ctrl+Shift+S', true, true, true]);
+  });
+
+  test('Change shortcut opens the shortcuts page', async () => {
+    // Given: as above
+    const user = setupUser();
+    renderSettings('default');
+    await advance(0);
+    // When
+    await user.click(within(stepThree()).getByRole('button', { name: 'Change shortcut' }));
+    await advance(0);
+    // Then
+    expect((await fakeBrowser.tabs.query({})).map((tab) => tab.url)).toContain(
+      'chrome://extensions/shortcuts',
+    );
   });
 });
