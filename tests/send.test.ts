@@ -386,9 +386,9 @@ describe('failed sends', () => {
     const telegram = createFakeSend();
     // When
     const first = await telegram
-      .sendText(READ_LATER.id, 'https://example.com/#fail=offline')
+      .sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k')
       .catch((e: SendError) => e.failure);
-    await telegram.sendText(READ_LATER.id, 'https://example.com/#fail=offline');
+    await telegram.sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k');
     // Then
     expect([first, telegram.sent.map((m) => m.text)]).toEqual([
       { reason: 'offline' },

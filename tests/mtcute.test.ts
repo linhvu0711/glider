@@ -1,6 +1,7 @@
-import { Chat, Long, tl, User } from '@mtcute/web';
-import { describe, expect, test } from 'vitest';
+import { Chat, Long, MtArgumentError, MtPeerNotFoundError, tl, User } from '@mtcute/web';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ChatId } from '../lib/telegram/chats';
+import type { SendError } from '../lib/telegram/send';
 import {
   createMtcuteChats,
   createMtcuteSend,
@@ -8,6 +9,7 @@ import {
   photoUrl,
   toAuthError,
   toChat,
+  toSendError,
   type MtcuteClient,
 } from '../lib/telegram/mtcute';
 
@@ -195,11 +197,136 @@ describe('mtcute send', () => {
     // When
     const send = createMtcuteSend(stub);
     const account = await send.account();
-    await send.sendText(7001 as ChatId, 'https://example.com/');
+    await send.sendText(7001 as ChatId, 'https://example.com/', '123e4567-e89b-12d3-a456-426614174000');
     // Then
     expect([account, calls]).toEqual([
       7100,
       ['prepare', 'fetch', 'start', 'sendText 7001 https://example.com/'],
     ]);
+  });
+});
+
+// A stub client for the send: `start` and `sendText` run the given functions and note each call.
+function sendStub({
+  start = async () => {},
+  sendText = async () => {},
+}: {
+  start?: () => Promise<void>;
+  sendText?: (params: unknown) => Promise<void>;
+} = {}) {
+  const calls: string[] = [];
+  const tg = {
+    start: async () => {
+      calls.push('start');
+      await start();
+    },
+    sendText: async (_chat: number, _text: string, params: unknown) => {
+      calls.push('sendText');
+      await sendText(params);
+    },
+  };
+  return { calls, stub: { get: () => tg, reset: async () => {} } as unknown as MtcuteClient };
+}
+
+describe('mtcute send failures', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  test('maps Telegram errors to send failures', () => {
+    // Given
+    const errors: unknown[] = [
+      tl.RpcError.fromTl({ _: 'mt_rpc_error', errorCode: 420, errorMessage: 'FLOOD_WAIT_30' }),
+      tl.RpcError.fromTl({ _: 'mt_rpc_error', errorCode: 420, errorMessage: 'SLOWMODE_WAIT_12' }),
+      new tl.RpcError(401, 'AUTH_KEY_UNREGISTERED'),
+      new tl.RpcError(401, 'SESSION_REVOKED'),
+      new MtArgumentError('Neither phone nor bot token were provided'),
+      new tl.RpcError(403, 'CHAT_WRITE_FORBIDDEN'),
+      new tl.RpcError(403, 'USER_IS_BLOCKED'),
+      new tl.RpcError(400, 'CHANNEL_PRIVATE'),
+      new MtPeerNotFoundError('no peer'),
+      new tl.RpcError(400, 'PEER_FLOOD'),
+      new Error('socket closed'),
+    ];
+    // When
+    const failures = errors.map((e) => toSendError(e).failure);
+    // Then
+    expect(failures).toEqual([
+      { reason: 'wait', seconds: 30 },
+      { reason: 'wait', seconds: 12 },
+      { reason: 'logged-out' },
+      { reason: 'logged-out' },
+      { reason: 'logged-out' },
+      { reason: 'unreachable' },
+      { reason: 'unreachable' },
+      { reason: 'unreachable' },
+      { reason: 'unreachable' },
+      { reason: 'other' },
+      { reason: 'other' },
+    ]);
+  });
+
+  test("sends with the link's random id", async () => {
+    // Given: a stub client that keeps the send's params
+    let params: { randomId: Long; abortSignal: unknown } | undefined;
+    const { stub } = sendStub({
+      sendText: async (p) => {
+        params = p as typeof params;
+      },
+    });
+    // When
+    await createMtcuteSend(stub).sendText(
+      7001 as ChatId,
+      'https://example.com/',
+      '123e4567-e89b-12d3-a456-426614174000',
+    );
+    // Then
+    expect([params?.randomId.toString(16), params?.abortSignal instanceof AbortSignal]).toEqual([
+      '123e4567e89b12d3',
+      true,
+    ]);
+  });
+
+  test('says no internet at once when the browser is offline', async () => {
+    // Given: the browser is offline
+    const { stub, calls } = sendStub();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    // When
+    const failure = await createMtcuteSend(stub)
+      .sendText(7001 as ChatId, 'https://example.com/', 'k')
+      .catch((e: SendError) => e.failure);
+    // Then
+    expect([failure, calls]).toEqual([{ reason: 'offline' }, []]);
+  });
+
+  test('gives up after 15 s with no answer', async () => {
+    // Given: fake timers; a start that never settles
+    vi.useFakeTimers();
+    const { stub, calls } = sendStub({ start: () => new Promise<void>(() => {}) });
+    // When
+    const sent = createMtcuteSend(stub)
+      .sendText(7001 as ChatId, 'https://example.com/', 'k')
+      .catch((e: SendError) => e.failure);
+    await vi.advanceTimersByTimeAsync(15_000);
+    // Then
+    expect([await sent, calls]).toEqual([{ reason: 'offline' }, ['start']]);
+  });
+
+  test('a random id Telegram already has counts as sent', async () => {
+    // Given: Telegram says the random id was used
+    const { stub } = sendStub({
+      sendText: async () => {
+        throw new tl.RpcError(400, 'RANDOM_ID_DUPLICATE');
+      },
+    });
+    // When
+    const result = await createMtcuteSend(stub).sendText(
+      7001 as ChatId,
+      'https://example.com/',
+      '123e4567-e89b-12d3-a456-426614174000',
+    );
+    // Then
+    expect(result).toBe(undefined);
   });
 });

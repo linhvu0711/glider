@@ -18,6 +18,9 @@ export class SendError extends Error {
 export interface TelegramSend {
   /** The Telegram user id of the saved session, or null. Reads saved data only. */
   account(): Promise<number | null>;
-  /** Rejects with SendError, or with anything else for a cause no reason names. */
-  sendText(chat: ChatId, text: string): Promise<void>;
+  /**
+   * `key` is the link id; a Retry passes the same key, so Telegram can tell a repeat.
+   * Rejects with SendError, or with anything else for a cause no reason names.
+   */
+  sendText(chat: ChatId, text: string, key: string): Promise<void>;
 }

@@ -169,7 +169,7 @@ export function createSendService(telegram: TelegramSend): SendService {
   }
 
   async function deliver(link: Link) {
-    const failure = await telegram.sendText(link.chat.id, link.page.url).then(
+    const failure = await telegram.sendText(link.chat.id, link.page.url, link.id).then(
       () => null,
       (e: unknown) => failureOf(e, Date.now()),
     );
