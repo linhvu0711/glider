@@ -397,14 +397,14 @@ describe('failed sends', () => {
 });
 
 // A Telegram send that answers each call with the next entry: an error is thrown,
-// a promise is awaited.
-function scripted(...answers: (SendError | Promise<void>)[]): TelegramSend {
+// a function is called and awaited.
+function scripted(...answers: (SendError | (() => Promise<void>))[]): TelegramSend {
   return {
     account: async () => LINH.id,
     sendText: async () => {
       const answer = answers.shift();
       if (answer instanceof SendError) throw answer;
-      await answer;
+      await answer?.();
     },
   };
 }
@@ -434,7 +434,7 @@ describe('retry', () => {
   test('Retry shows sending first', async () => {
     // Given: a send that fails, then one that waits until the test lets it go
     const { sender } = await setUp({
-      telegram: scripted(new SendError({ reason: 'offline' }), new Promise<void>(() => {})),
+      telegram: scripted(new SendError({ reason: 'offline' }), () => new Promise<void>(() => {})),
     });
     const id = await failedId(sender, EXAMPLE);
     // When

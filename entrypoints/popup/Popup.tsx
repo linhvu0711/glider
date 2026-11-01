@@ -60,12 +60,15 @@ export default function Popup({
   opened,
   chats,
   openSettings,
+  openChatSettings,
   close,
 }: {
   sender: SendConnection;
   opened: Promise<Opened>;
   chats: TelegramChats;
   openSettings: () => void;
+  /** Opens the settings page at step 2, to pick another chat. */
+  openChatSettings: () => void;
   close: () => void;
 }) {
   const result = useOpened(opened);
@@ -132,6 +135,9 @@ export default function Popup({
               now={now}
               focus={link.id === focus}
               onUndo={() => void sender.undo(link.id)}
+              onRetry={() => void sender.retry(link.id)}
+              onLogIn={() => openSettings()}
+              onPickChat={() => openChatSettings()}
               onRemove={() => void sender.remove(link.id)}
             />
           ))}
@@ -175,17 +181,41 @@ function reasonOf(link: Link & { status: 'failed' }): string {
   }
 }
 
+function RetryButton({
+  link,
+  now,
+  onRetry,
+}: {
+  link: Link & { status: 'failed' };
+  now: number;
+  onRetry: () => void;
+}) {
+  const wait =
+    link.failure.reason === 'wait' ? Math.ceil((link.failure.retryAt - now) / 1000) : 0;
+  return (
+    <button type="button" className="button row-button" disabled={wait > 0} onClick={onRetry}>
+      {wait > 0 ? `Retry in ${wait} s` : 'Retry'}
+    </button>
+  );
+}
+
 function Row({
   link,
   now,
   focus,
   onUndo,
+  onRetry,
+  onLogIn,
+  onPickChat,
   onRemove,
 }: {
   link: Link;
   now: number;
   focus: boolean;
   onUndo: () => void;
+  onRetry: () => void;
+  onLogIn: () => void;
+  onPickChat: () => void;
   onRemove: () => void;
 }) {
   // Set once, so the bar keeps draining from where the send left it, also after the popup opens again.
@@ -219,6 +249,24 @@ function Row({
             {reasonOf(link)}
           </span>
         )}
+        {link.status === 'failed' && (
+          <span className="row-actions">
+            <RetryButton link={link} now={now} onRetry={onRetry} />
+            {link.failure.reason === 'logged-out' && (
+              <button type="button" className="button-plain row-button" onClick={onLogIn}>
+                Log in again
+              </button>
+            )}
+            {link.failure.reason === 'unreachable' && (
+              <button type="button" className="button-plain row-button" onClick={onPickChat}>
+                Pick another chat
+              </button>
+            )}
+            <button type="button" className="row-quiet" onClick={onRemove}>
+              Remove
+            </button>
+          </span>
+        )}
       </span>
       {waiting && (
         <button
@@ -229,11 +277,6 @@ function Row({
         >
           <UndoIcon width={14} height={14} />
           <span>Undo</span>
-        </button>
-      )}
-      {link.status === 'failed' && (
-        <button type="button" className="button-plain undo" onClick={onRemove}>
-          Remove
         </button>
       )}
       {waiting && (

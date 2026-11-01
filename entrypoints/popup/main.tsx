@@ -28,6 +28,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       opened={opened}
       chats={connectChats()}
       openSettings={() => void browser.runtime.openOptionsPage()}
+      // openOptionsPage takes no address, so step 2 opens in a new tab.
+      openChatSettings={() =>
+        void browser.tabs.create({ url: browser.runtime.getURL('/options.html#chat') })
+      }
       close={() => window.close()}
     />
   </React.StrictMode>,
