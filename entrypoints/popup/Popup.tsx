@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ChatAvatar } from '../../components/chat-avatar';
-import { GearIcon, GlobeIcon, UndoIcon } from '../../components/icons';
+import { AlertIcon, GearIcon, GlobeIcon, UndoIcon } from '../../components/icons';
 import { ShortcutKeys } from '../../components/shortcut-keys';
 import type { SendConnection } from '../../lib/send/connection';
-import { sendList, UNDO_MS } from '../../lib/send/service';
-import type { Link, LinkId, Opened } from '../../lib/send/state';
+import { SEND_LIMIT, sendList, UNDO_MS } from '../../lib/send/service';
+import type { Link, Opened } from '../../lib/send/state';
 import type { TelegramChats } from '../../lib/telegram/chats';
 
 // The send service writes the links; the popup only shows them.
@@ -71,7 +71,29 @@ export default function Popup({
   const result = useOpened(opened);
   const links = useLinks();
   const now = useNow();
-  if (!result || result.kind === 'setup') return <div className="popup" />;
+
+  // Chrome closes the popup on a click outside; Escape closes it here in every browser.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close]);
+
+  if (!result) return <div className="popup" />;
+  if (result.kind === 'setup') {
+    return (
+      <div className="popup popup-setup">
+        <AlertIcon className="setup-icon" width={22} height={22} />
+        <h1 className="setup-title">Set up Glider first</h1>
+        <p className="muted setup-text">Log in and pick a chat in the settings.</p>
+        <button type="button" className="button" onClick={openSettings}>
+          Open settings
+        </button>
+      </div>
+    );
+  }
   const focus = result.kind === 'added' || result.kind === 'already' ? result.id : null;
   return (
     <div className="popup">
@@ -85,17 +107,36 @@ export default function Popup({
           <GearIcon width={18} height={18} />
         </button>
       </header>
-      <ul className="rows">
-        {links.map((link) => (
-          <Row
-            key={link.id}
-            link={link}
-            now={now}
-            focus={link.id === focus}
-            onUndo={() => void sender.undo(link.id)}
-          />
-        ))}
-      </ul>
+      {result.kind === 'already' && (
+        <Note text="This page is already waiting. It was not added twice." />
+      )}
+      {result.kind === 'limit' && (
+        <Note
+          text={`Slow down. You can send ${SEND_LIMIT} links a minute. Try again in ${result.seconds} s.`}
+        />
+      )}
+      {result.kind === 'not-web' && (
+        <Note
+          title="Nothing to send here"
+          text="Nothing to send on this page. Glider sends web pages only."
+        />
+      )}
+      {links.length === 0 ? (
+        <p className="muted nothing">Nothing waiting</p>
+      ) : (
+        <ul className="rows">
+          {links.map((link) => (
+            <Row
+              key={link.id}
+              link={link}
+              now={now}
+              focus={link.id === focus}
+              onUndo={() => void sender.undo(link.id)}
+              onRemove={() => void sender.remove(link.id)}
+            />
+          ))}
+        </ul>
+      )}
       <footer className="popup-foot">
         <ShortcutKeys />
         <span>to send</span>
@@ -105,16 +146,30 @@ export default function Popup({
   );
 }
 
+function Note({ title, text }: { title?: string; text: string }) {
+  return (
+    <div className="note" role="status">
+      <AlertIcon className="note-icon" width={16} height={16} />
+      <span className="note-text">
+        {title && <span className="note-title">{title}</span>}
+        <span>{text}</span>
+      </span>
+    </div>
+  );
+}
+
 function Row({
   link,
   now,
   focus,
   onUndo,
+  onRemove,
 }: {
   link: Link;
   now: number;
   focus: boolean;
-  onUndo: (id: LinkId) => void;
+  onUndo: () => void;
+  onRemove: () => void;
 }) {
   // Set once, so the bar keeps draining from where the send left it, also after the popup opens again.
   const [drainDelay] = useState(() => -(UNDO_MS - Math.max(0, link.sendAt - Date.now())));
@@ -134,19 +189,29 @@ function Row({
         {waiting && (
           <span className="row-state row-state-blue">{`Sending in ${Math.max(1, Math.ceil((link.sendAt - now) / 1000))} s`}</span>
         )}
+        {link.status === 'sending' && <span className="row-state row-state-blue">Sending…</span>}
+        {link.status === 'sent' && (
+          <span className="row-state row-state-green">{`Sent to ${link.chat.name}`}</span>
+        )}
         {link.status === 'undone' && (
           <span className="row-state muted">Undone. Nothing was sent.</span>
         )}
+        {link.status === 'failed' && <span className="row-state row-state-red">Not sent</span>}
       </span>
       {waiting && (
         <button
           type="button"
           className="button-plain undo"
           autoFocus={focus}
-          onClick={() => onUndo(link.id)}
+          onClick={onUndo}
         >
           <UndoIcon width={14} height={14} />
           <span>Undo</span>
+        </button>
+      )}
+      {link.status === 'failed' && (
+        <button type="button" className="button-plain undo" onClick={onRemove}>
+          Remove
         </button>
       )}
       {waiting && (

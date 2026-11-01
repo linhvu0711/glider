@@ -167,3 +167,70 @@ body {
 .popup-undo {
   margin-left: auto;
 }
+
+.row-state-green {
+  color: var(--green);
+}
+
+.row-state-red {
+  color: var(--red);
+}
+
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.note-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-3);
+}
+
+.note-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.nothing {
+  margin: 0;
+  padding: 28px 14px;
+  text-align: center;
+}
+
+.popup-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.setup-icon {
+  color: var(--accent);
+}
+
+.setup-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setup-text {
+  margin: 0 0 8px;
+}
