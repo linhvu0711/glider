@@ -103,7 +103,15 @@ export function createSendService(telegram: TelegramSend): SendService {
       });
     },
 
-    async undo() {},
+    undo(id) {
+      return serial(async () => {
+        if (!state.links.some((link) => link.id === id && link.status === 'waiting')) return;
+        clearTimeout(timers.get(id));
+        timers.delete(id);
+        await setStatus(id, 'undone');
+        dropLater(id);
+      });
+    },
 
     async remove() {},
   };

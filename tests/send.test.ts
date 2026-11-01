@@ -131,3 +131,33 @@ describe('send', () => {
     expect(opened).toEqual({ kind: 'setup' });
   });
 });
+
+describe('undo', () => {
+  test('Undo in time sends nothing', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { telegram, sender } = await setUp();
+    // When
+    const opened = await sender.open(EXAMPLE);
+    await advance(3_000);
+    if (opened.kind === 'added') await sender.undo(opened.id);
+    await advance(0);
+    const undone = await statuses();
+    await advance(2_500);
+    const after = await statuses();
+    await advance(10_000);
+    // Then
+    expect([undone, after, telegram.sent]).toEqual([['undone'], [], []]);
+  });
+
+  test('Undo after the send changes nothing', async () => {
+    // Given: as above
+    const { telegram, sender } = await setUp();
+    // When
+    const opened = await sender.open(EXAMPLE);
+    await advance(5_000);
+    if (opened.kind === 'added') await sender.undo(opened.id);
+    await advance(0);
+    // Then
+    expect([await statuses(), telegram.sent.length]).toEqual([['sent'], 1]);
+  });
+});
