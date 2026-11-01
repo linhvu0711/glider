@@ -26,12 +26,15 @@ const LIMIT_MS = 60_000;
 const CHECK_MS = 2_000;
 const BLUE = '#2563eb';
 const GREEN = '#16a34a';
+const RED = '#dc2626';
 
 // One answer per state, so one send never shows two badges.
 function badgeFor(links: Link[], sentAt: number | null, now: number) {
   const waiting = links.filter((l) => l.status === 'waiting' || l.status === 'sending').length;
   if (waiting > 0) return { text: String(waiting), color: BLUE };
   if (sentAt !== null && now - sentAt < CHECK_MS) return { text: '✓', color: GREEN };
+  // The count and the check pass on their own; the ! waits for the user.
+  if (links.some((l) => l.status === 'failed')) return { text: '!', color: RED };
   return { text: '', color: BLUE };
 }
 

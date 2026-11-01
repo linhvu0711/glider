@@ -492,3 +492,35 @@ describe('retry', () => {
     ]);
   });
 });
+
+describe('red badge', () => {
+  test('shows a red ! while a link is failed', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { sender } = await setUp();
+    const color = vi.spyOn(fakeBrowser.action, 'setBadgeBackgroundColor');
+    const badge = () => fakeBrowser.action.getBadgeText({});
+    // When
+    const id = await failedId(sender, failing('offline'));
+    const failed = [await badge(), color.mock.lastCall];
+    await sender.remove(id);
+    await advance(0);
+    // Then
+    expect([...failed, await badge()]).toEqual(['!', [{ color: '#dc2626' }], '']);
+  });
+
+  test('a waiting count wins over the red !', async () => {
+    // Given: a link for #fail=offline failed at 10:00:05
+    const { sender } = await setUp();
+    await failedId(sender, failing('offline'));
+    const badge = () => fakeBrowser.action.getBadgeText({});
+    // When
+    await sender.open(EXAMPLE_ORG);
+    await advance(0);
+    const waiting = await badge();
+    await advance(5_000);
+    const sent = await badge();
+    await advance(2_000);
+    // Then
+    expect([waiting, sent, await badge()]).toEqual(['1', '✓', '!']);
+  });
+});
