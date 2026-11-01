@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { connectChats } from '../../lib/chats/connection';
 import { connectPort, type LoginConnection } from '../../lib/login/connection';
 import App from './App';
 import './style.css';
@@ -16,6 +17,6 @@ function connect(): LoginConnection {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App connection={connect()} />
+    <App connection={connect()} chats={connectChats()} />
   </React.StrictMode>,
 );

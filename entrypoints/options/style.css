@@ -452,6 +452,173 @@ body {
   color: var(--text);
 }
 
+.card + .card {
+  margin-top: 16px;
+}
+
+.card-off {
+  opacity: 0.5;
+}
+
+.card-line {
+  margin: 0 0 16px;
+}
+
+.search-field {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  color: var(--text-3);
+}
+
+.search-input {
+  width: 100%;
+  padding-left: 36px;
+}
+
+.list-title {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.chat-list {
+  max-height: 408px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 58px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.chat-row:last-child {
+  border-bottom: 0;
+}
+
+.chat-row:has(input:checked) {
+  background: #eff6ff;
+}
+
+.chat-row input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.chat-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.avatar-photo {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.chat-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.chat-tag-current {
+  background: none;
+  color: var(--accent);
+}
+
+.chat-placeholder {
+  cursor: default;
+}
+
+.placeholder-circle {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f3f4f6;
+}
+
+.placeholder-bar {
+  display: block;
+  width: 96px;
+  height: 10px;
+  border-radius: 4px;
+  background: #f3f4f6;
+}
+
+.placeholder-bar-long {
+  width: 160px;
+}
+
+.chat-error {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.button-save:disabled {
+  opacity: 1;
+  background: #f3f4f6;
+  color: var(--text-3);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: var(--text);
+  color: #fff;
+  font-size: 14px;
+}
+
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 /* Fonts keep different space under the baseline (Linux's Nimbus Sans keeps a lot), so a
    centered line box put the letters 3 px high there. Trimming each line to cap height and
    baseline centers the letters themselves, in any font. */
@@ -467,6 +634,9 @@ body {
 .button-plain,
 .banner-text,
 .banner .link,
-.offline-text {
+.offline-text,
+.chat-name,
+.chat-tag,
+.list-title {
   text-box: trim-both cap alphabetic;
 }

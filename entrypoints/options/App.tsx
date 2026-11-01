@@ -6,7 +6,16 @@ import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
-import { AlertIcon, CheckIcon, EyeIcon, EyeOffIcon } from '../../components/icons';
+import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
+import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
+import {
+  AlertIcon,
+  BookmarkIcon,
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  SearchIcon,
+} from '../../components/icons';
 
 function useLoginView(connection: LoginConnection | undefined): LoginView | null {
   const [view, setView] = useState<LoginView | null>(null);
@@ -19,8 +28,25 @@ function useLoginView(connection: LoginConnection | undefined): LoginView | null
   return view;
 }
 
-export default function App({ connection }: { connection?: LoginConnection }) {
+// The account step 2 works for. A session check (another tab's hello) is not a log out,
+// so the account stays through `checking`.
+function useChatAccount(login: LoginStep | undefined): Account | null {
+  const [account, setAccount] = useState<Account | null>(null);
+  const next =
+    login?.step === 'done' ? login.account : login?.step === 'checking' ? account : null;
+  if (next !== account) setAccount(next);
+  return next;
+}
+
+export default function App({
+  connection,
+  chats,
+}: {
+  connection?: LoginConnection;
+  chats?: TelegramChats;
+}) {
   const view = useLoginView(connection);
+  const chatAccount = useChatAccount(view?.login);
   return (
     <div className="page">
       <header className="header">
@@ -42,6 +68,10 @@ export default function App({ connection }: { connection?: LoginConnection }) {
         <>
           {view.notice && <LoggedOutBanner send={connection.send} />}
           <LoginCard login={view.login} send={connection.send} />
+          {chats && (
+            // A new key per account: no list, pick, or search stays from the last account.
+            <TargetCard key={chatAccount?.id ?? 'none'} account={chatAccount} chats={chats} />
+          )}
         </>
       )}
       <footer className="footer">
@@ -496,4 +526,315 @@ function PasswordStep({
       </button>
     </form>
   );
+}
+
+// Picked by id, so a chat keeps its color in every list (mockup frame 1).
+const AVATAR_COLORS = ['#2563eb', '#db2777', '#059669', '#b45309', '#7c3aed', '#0891b2', '#dc2626'];
+
+const MAX_ROWS = 20;
+
+const TAGS: Record<ChatKind, string> = {
+  self: 'You',
+  person: 'Person',
+  bot: 'Bot',
+  group: 'Group',
+  channel: 'Channel',
+};
+
+type ChatsState = { state: 'loading' } | { state: 'ready'; chats: Chat[] } | { state: 'error' };
+
+const PLACEHOLDER_ROWS = 5;
+
+function useChatList(loggedIn: boolean, chats: TelegramChats) {
+  const [list, setList] = useState<ChatsState>({ state: 'loading' });
+  const [tries, setTries] = useState(0);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    let live = true;
+    setList({ state: 'loading' });
+    chats.list().then(
+      (next) => {
+        if (live) setList({ state: 'ready', chats: next });
+      },
+      () => {
+        if (live) setList({ state: 'error' });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [loggedIn, chats, tries]);
+
+  return { list, retry: () => setTries((n) => n + 1) };
+}
+
+function matches(chat: Chat, query: string): boolean {
+  const text = query.replace(/^@/, '');
+  return (
+    chat.name.toLowerCase().includes(text) || (chat.username ?? '').toLowerCase().includes(text)
+  );
+}
+
+const TOAST_MS = 4_000;
+
+function useTargetChat(account: Account | null): Chat | null | undefined {
+  const [saved, setSaved] = useState<TargetChat | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    void targetChat.getValue().then((value) => {
+      if (live) setSaved(value);
+    });
+    const unwatch = targetChat.watch((value) => setSaved(value));
+    return () => {
+      live = false;
+      unwatch();
+    };
+  }, []);
+  if (saved === undefined) return undefined;
+  return account ? targetChatFor(saved, account.id) : null;
+}
+
+function TargetCard({ account, chats }: { account: Account | null; chats: TelegramChats }) {
+  const loggedIn = account !== null;
+  const { list, retry } = useChatList(loggedIn, chats);
+  const saved = useTargetChat(account);
+  const [picked, setPicked] = useState<ChatId | null>(null);
+  // The saved chat moves to the top once per load, never under the pointer at Save.
+  const [pinned, setPinned] = useState<Chat | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const savedKnown = saved !== undefined;
+
+  useEffect(() => {
+    if (saved) setPicked((current) => current ?? saved.id);
+  }, [saved]);
+
+  useEffect(() => {
+    if (list.state === 'ready' && savedKnown) setPinned(saved ?? null);
+    // Only a new load moves the saved chat; a Save after it does not.
+  }, [list, savedKnown]);
+
+  useEffect(() => {
+    if (toast === null) return;
+    const id = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const loaded = list.state === 'ready' ? list.chats : [];
+  const ordered = pinned
+    ? [loaded.find((chat) => chat.id === pinned.id) ?? pinned, ...loaded.filter((chat) => chat.id !== pinned.id)]
+    : loaded;
+  const typed = query.trim();
+  const searching = typed !== '';
+  const shown = ordered
+    .filter((chat) => !searching || matches(chat, typed.toLowerCase()))
+    .slice(0, MAX_ROWS);
+  const pickedChat =
+    ordered.find((chat) => chat.id === picked) ?? (saved && saved.id === picked ? saved : null);
+  const done = loggedIn && !!saved;
+  const changed = pickedChat !== null && pickedChat.id !== saved?.id;
+
+  async function save() {
+    if (!account || !pickedChat) return;
+    await targetChat.setValue({ account: account.id, chat: pickedChat });
+    setToast(`Saved. Links now go to ${pickedChat.name}.`);
+  }
+
+  return (
+    <section
+      className={loggedIn ? 'card' : 'card card-off'}
+      aria-labelledby="step-2-title"
+      aria-disabled={loggedIn ? undefined : 'true'}
+      inert={!loggedIn}
+    >
+      <div className="card-head">
+        <span className={done ? 'badge badge-done' : 'badge'}>
+          <span>2</span>
+        </span>
+        <h2 className="card-title" id="step-2-title">
+          Choose the chat
+        </h2>
+        {done && (
+          <span className="chip-done">
+            <CheckIcon width={14} height={14} />
+            <span>Done</span>
+          </span>
+        )}
+      </div>
+      <p className="muted card-line">
+        Links go to this one chat, sent by you. You can change it any time.
+      </p>
+      {loggedIn && (
+        <>
+          <div className="search-field">
+            <SearchIcon className="search-icon" />
+            <input
+              className="input search-input"
+              type="search"
+              placeholder="Search your chats"
+              aria-label="Search your chats"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <h3 className="list-title" id="chat-list-title">
+            {searching ? 'Results' : 'Recent chats'}
+          </h3>
+          {list.state === 'error' ? (
+            <div className="offline chat-error">
+              <AlertIcon className="offline-icon" width={20} height={20} />
+              <p className="offline-text">Could not load your chats. Check your internet.</p>
+              <button type="button" className="button" onClick={retry}>
+                Try again
+              </button>
+            </div>
+          ) : list.state === 'ready' && shown.length === 0 ? (
+            <p className="muted empty">
+              {`No chat named "${typed}". Check the spelling, or open the chat in Telegram once so it shows here.`}
+            </p>
+          ) : (
+            <div
+              className="chat-list"
+              role="radiogroup"
+              aria-labelledby="chat-list-title"
+              aria-busy={list.state === 'loading' ? 'true' : undefined}
+            >
+              {list.state === 'loading'
+                ? Array.from({ length: PLACEHOLDER_ROWS }, (_, i) => (
+                    <div
+                      key={i}
+                      className="chat-row chat-placeholder"
+                      data-testid="chat-placeholder"
+                      aria-hidden="true"
+                    >
+                      <span className="placeholder-circle" />
+                      <span className="chat-text">
+                        <span className="placeholder-bar placeholder-bar-long" />
+                        <span className="placeholder-bar" />
+                      </span>
+                    </div>
+                  ))
+                : shown.map((chat) => (
+                    <ChatRow
+                      key={chat.id}
+                      chat={chat}
+                      chats={chats}
+                      current={chat.id === saved?.id}
+                      checked={chat.id === picked}
+                      onPick={() => setPicked(chat.id)}
+                    />
+                  ))}
+            </div>
+          )}
+          <div className="save-row">
+            <button
+              type="button"
+              className="button button-save"
+              disabled={!changed}
+              onClick={() => void save()}
+            >
+              Save
+            </button>
+            {pickedChat && (
+              <span className="muted">
+                {changed
+                  ? `Links will go to ${pickedChat.name}.`
+                  : `Links go to ${pickedChat.name}.`}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChatRow({
+  chat,
+  chats,
+  current,
+  checked,
+  onPick,
+}: {
+  chat: Chat;
+  chats: TelegramChats;
+  current: boolean;
+  checked: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <label className="chat-row">
+      <input
+        type="radio"
+        name="target-chat"
+        aria-label={chat.name}
+        checked={checked}
+        onChange={onPick}
+      />
+      <ChatAvatar chat={chat} chats={chats} />
+      <span className="chat-text">
+        <span className="chat-name">{chat.name}</span>
+        <span className="muted">{chat.detail}</span>
+      </span>
+      {current ? (
+        <span className="chat-tag chat-tag-current">Current</span>
+      ) : (
+        <span className="chat-tag">{TAGS[chat.kind]}</span>
+      )}
+    </label>
+  );
+}
+
+function ChatAvatar({ chat, chats }: { chat: Chat; chats: TelegramChats }) {
+  const photo = usePhoto(chat, chats);
+  if (chat.kind === 'self') {
+    return (
+      <span className="avatar chat-avatar" style={{ background: 'var(--accent)' }}>
+        <BookmarkIcon width={16} height={16} />
+      </span>
+    );
+  }
+  if (photo) return <img className="avatar-photo" alt="" src={photo} />;
+  return (
+    <span
+      className="avatar chat-avatar"
+      style={{ background: AVATAR_COLORS[Math.abs(chat.id) % AVATAR_COLORS.length] }}
+    >
+      <span>{chat.initials}</span>
+    </span>
+  );
+}
+
+// One ask per chat for the life of the page.
+const photoAsks = new WeakMap<TelegramChats, Map<ChatId, Promise<string | null>>>();
+
+function usePhoto(chat: Chat, chats: TelegramChats): string | null {
+  const [photo, setPhoto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chat.hasPhoto) return;
+    let live = true;
+    let asks = photoAsks.get(chats);
+    if (!asks) {
+      asks = new Map();
+      photoAsks.set(chats, asks);
+    }
+    let ask = asks.get(chat.id);
+    if (!ask) {
+      ask = chats.photo(chat.id);
+      asks.set(chat.id, ask);
+    }
+    void ask.then((url) => {
+      if (live) setPhoto(url);
+    });
+    return () => {
+      live = false;
+    };
+  }, [chat.id, chat.hasPhoto, chats]);
+  return photo;
 }

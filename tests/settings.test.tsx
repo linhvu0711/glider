@@ -7,7 +7,15 @@ import { connectInMemory } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
-import { createFakeAuth, type FakeScenario } from '../lib/telegram/fake';
+import {
+  createFakeAuth,
+  createFakeChats,
+  FAKE_CHATS,
+  FAKE_PHOTO,
+  LINH,
+  MINH,
+  type FakeScenario,
+} from '../lib/telegram/fake';
 
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date('2026-10-31T10:00:00Z') });
@@ -408,8 +416,6 @@ describe('2-step password', () => {
 });
 
 describe('saved session', () => {
-  const MINH = { name: 'Minh Anh', initials: 'MA' };
-
   test('shows the account row when a saved session is still good', async () => {
     // Given: fake saved session Minh Anh, scenario default
     await storage.setItem('local:fakeSession', MINH);
@@ -594,7 +600,7 @@ describe('no internet', () => {
 
   test('says Telegram cannot be reached when the session check times out', async () => {
     // Given: fake saved session Minh Anh, scenario offline
-    await storage.setItem('local:fakeSession', { name: 'Minh Anh', initials: 'MA' });
+    await storage.setItem('local:fakeSession', MINH);
     // When: render, advance 2 s
     renderApp('offline');
     await advance(2_000);
@@ -703,5 +709,364 @@ describe('two tabs', () => {
     // Then
     const last = views.at(-1)?.login;
     expect(last?.step === 'qr' ? last.code?.url : last?.step).toBe('tg://login?token=fake-2');
+  });
+});
+
+function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElement }) {
+  const service = createLoginService(createFakeAuth({ scenario }), 'Chromium on Linux');
+  return render(
+    <App connection={connectInMemory(service)} chats={createFakeChats({ scenario })} />,
+    options?.container ? { container: options.container } : undefined,
+  );
+}
+
+function stepTwo() {
+  return screen.getByRole('region', { name: 'Choose the chat' });
+}
+
+function rowOf(name: string) {
+  return screen.getByRole('radio', { name }).closest('label') as HTMLElement;
+}
+
+describe('choose the chat', () => {
+  test('greys out step 2 when not logged in', async () => {
+    // Given: fake scenario default, no saved session
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    expect(
+      stepTwo().getAttribute('aria-disabled') === 'true' &&
+        screen.queryByLabelText('Search your chats') === null,
+    ).toBe(true);
+  });
+
+  test('shows the line, the search box, and Recent chats when logged in', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const card = within(stepTwo());
+    expect([
+      !!card.getByText(
+        'Links go to this one chat, sent by you. You can change it any time.',
+      ),
+      !!card.getByRole('searchbox', { name: 'Search your chats' }),
+      within(card.getByRole('radiogroup', { name: 'Recent chats' })).getAllByRole('radio').length,
+    ]).toEqual([true, true, 7]);
+  });
+
+  test('shows each chat with its second line and tag', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const rows = screen
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')?.textContent);
+    expect(rows).toEqual([
+      'Saved MessagesYour own chatYou',
+      'RLRead Later Bot@readlater_botBot',
+      'Tuan VuonlinePerson',
+      'MAMinh Anhlast seen recentlyPerson',
+      'DCDesign Crew12 membersGroup',
+      'HHermes@hermes_notes_botBot',
+      'GNGlider News1,204 subscribersChannel',
+    ]);
+  });
+
+  test('shows Saved Messages as Your own chat', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const row = rowOf('Saved Messages');
+    expect([!!row.querySelector('.avatar svg'), row.querySelector('img')]).toEqual([true, null]);
+  });
+
+  test('shows the chat photo when the chat has one', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    expect(rowOf('Tuan Vu').querySelector('img')?.getAttribute('src')).toBe(FAKE_PHOTO);
+  });
+});
+
+describe('choose the chat: loading and errors', () => {
+  test('shows grey rows while chats load', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When: chats take 5 s, advance 1 s
+    renderSettings('chats-slow');
+    await advance(1_000);
+    // Then
+    expect(screen.getAllByTestId('chat-placeholder')).toHaveLength(5);
+  });
+
+  test('says the chats could not load', async () => {
+    // Given: saved session Minh Anh
+    await storage.setItem('local:fakeSession', MINH);
+    // When: log in, then the first load fails after 1 s
+    renderSettings('chats-error');
+    await advance(0);
+    await advance(1_000);
+    // Then
+    const card = within(stepTwo());
+    expect([
+      !!card.getByText('Could not load your chats. Check your internet.'),
+      !!card.getByRole('button', { name: 'Try again' }),
+    ]).toEqual([true, true]);
+  });
+
+  test('Try again loads the chats', async () => {
+    // Given: saved session Minh Anh, the first load failed
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    renderSettings('chats-error');
+    await advance(0);
+    await advance(1_000);
+    // When
+    await user.click(within(stepTwo()).getByRole('button', { name: 'Try again' }));
+    await advance(0);
+    // Then
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Recent chats' })).getAllByRole('radio'),
+    ).toHaveLength(7);
+  });
+});
+
+describe('choose the chat: search', () => {
+  async function loggedInSearch() {
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    renderSettings('default');
+    await advance(0);
+    return user;
+  }
+
+  test('filters chats by name under Results', async () => {
+    // Given: saved session Minh Anh, the chat list loaded
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), 'herm');
+    // Then
+    const results = screen.getByRole('radiogroup', { name: 'Results' });
+    expect(within(results).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Hermes',
+    ]);
+  });
+
+  test('filters chats by @username', async () => {
+    // Given: as above
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), '@glider');
+    // Then
+    const results = screen.getByRole('radiogroup', { name: 'Results' });
+    expect(within(results).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Glider News',
+    ]);
+  });
+
+  test('says no chat has that name', async () => {
+    // Given: as above
+    const user = await loggedInSearch();
+    // When
+    await user.type(screen.getByLabelText('Search your chats'), 'zzz');
+    // Then
+    expect(
+      screen.getByText(
+        'No chat named "zzz". Check the spelling, or open the chat in Telegram once so it shows here.',
+      ),
+    ).toBeTruthy();
+  });
+});
+
+describe('choose the chat: save', () => {
+  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot');
+  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes');
+
+  async function loggedIn() {
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    renderSettings('default');
+    await advance(0);
+    return user;
+  }
+
+  test('picking another chat turns on Save and names it', async () => {
+    // Given: saved session Minh Anh, nothing saved in local:targetChat
+    const user = await loggedIn();
+    // When
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    // Then
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect([save.disabled, !!screen.getByText('Links will go to Read Later Bot.')]).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  test('Save shows the toast and the Done chip', async () => {
+    // Given: Read Later Bot picked
+    const user = await loggedIn();
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    // When
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await advance(0);
+    // Then
+    expect([
+      screen.getByRole('status').textContent,
+      !!within(stepTwo()).getByText('Done'),
+      await storage.getItem('local:targetChat'),
+    ]).toEqual([
+      'Saved. Links now go to Read Later Bot.',
+      true,
+      { account: MINH.id, chat: READ_LATER },
+    ]);
+  });
+
+  test('shows the saved chat first with the tag Current', async () => {
+    // Given: Hermes saved
+    await storage.setItem('local:targetChat', { account: MINH.id, chat: HERMES });
+    // When
+    await loggedIn();
+    // Then
+    const first = screen.getAllByRole('radio')[0] as HTMLInputElement;
+    expect([
+      first.getAttribute('aria-label'),
+      first.checked,
+      first.closest('label')?.textContent?.endsWith('Current'),
+      (screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled,
+      !!screen.getByText('Links go to Hermes.'),
+    ]).toEqual(['Hermes', true, true, true, true]);
+  });
+
+  test('keeps the saved chat after a restart', async () => {
+    // Given: Read Later Bot saved, then the page closed
+    const user = await loggedIn();
+    await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await advance(0);
+    cleanup();
+    // When: a new page with a new service and a new fake
+    renderSettings('default');
+    await advance(0);
+    // Then
+    const first = screen.getAllByRole('radio')[0] as HTMLInputElement;
+    expect([
+      first.getAttribute('aria-label'),
+      first.checked,
+      !!within(stepTwo()).getByText('Done'),
+    ]).toEqual(['Read Later Bot', true, true]);
+  });
+
+  test('two tabs that save the same chat keep one saved chat', async () => {
+    // Given: saved session Minh Anh, two pages
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    const tabs = [document.createElement('div'), document.createElement('div')];
+    for (const tab of tabs) {
+      document.body.appendChild(tab);
+      renderSettings('default', { container: tab });
+    }
+    await advance(0);
+    // When: each page picks Read Later Bot and saves
+    for (const tab of tabs) {
+      await user.click(within(tab).getByRole('radio', { name: 'Read Later Bot' }));
+      const save = within(tab).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+      if (!save.disabled) await user.click(save);
+      await advance(0);
+    }
+    // Then
+    expect(await storage.getItem('local:targetChat')).toEqual({ account: MINH.id, chat: READ_LATER });
+  });
+  test('another account starts with no saved chat', async () => {
+    // Given: Hermes saved by Linh Vu
+    await storage.setItem('local:targetChat', { account: LINH.id, chat: HERMES });
+    // When: Minh Anh is logged in
+    await loggedIn();
+    // Then
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect([
+      radios[0]?.getAttribute('aria-label'),
+      radios.some((radio) => radio.checked),
+      screen.queryByText('Current'),
+      within(stepTwo()).queryByText('Done'),
+    ]).toEqual(['Saved Messages', false, null, null]);
+  });
+
+  test('log out clears the list, the pick, and the search', async () => {
+    // Given: Minh Anh logged in, chats take 5 s, Hermes found and picked
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    renderSettings('chats-slow');
+    await advance(0);
+    await advance(5_000);
+    await user.type(screen.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
+    await user.click(screen.getByRole('radio', { name: 'Hermes' }));
+    // When: log out, then log in again by phone
+    await user.click(
+      within(screen.getByRole('contentinfo')).getByRole('button', { name: 'Log out' }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Log out' }),
+    );
+    await advance(0);
+    await openPhoneStep(user);
+    await user.type(screen.getByLabelText('Phone number'), '912 345 678');
+    await user.click(screen.getByRole('button', { name: 'Send code' }));
+    await advance(0);
+    await user.keyboard('12345');
+    await advance(0);
+    // Then: grey rows while the list loads, then nothing picked and no search
+    const loading = [
+      screen.getAllByTestId('chat-placeholder').length,
+      screen.queryAllByRole('radio').length,
+    ];
+    await advance(5_000);
+    expect([
+      ...loading,
+      (screen.getByRole('searchbox', { name: 'Search your chats' }) as HTMLInputElement).value,
+      (screen.getAllByRole('radio') as HTMLInputElement[]).some((radio) => radio.checked),
+    ]).toEqual([5, 0, '', false]);
+  });
+  test('another settings tab keeps the pick and the search', async () => {
+    // Given: Minh Anh logged in, Hermes found and picked, not saved
+    await storage.setItem('local:fakeSession', MINH);
+    const user = setupUser();
+    const auth = createFakeAuth({ scenario: 'default' });
+    const service = createLoginService(auth, 'Chromium on Linux');
+    const chats = createFakeChats({ scenario: 'default' });
+    const firstTab = document.body.appendChild(document.createElement('div'));
+    const secondTab = document.body.appendChild(document.createElement('div'));
+    render(<App connection={connectInMemory(service)} chats={chats} />, { container: firstTab });
+    await advance(0);
+    const first = within(firstTab);
+    await user.type(first.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
+    await user.click(first.getByRole('radio', { name: 'Hermes' }));
+    // When: a second settings tab opens, and the session check takes 1 s
+    const restore = auth.restore.bind(auth);
+    vi.spyOn(auth, 'restore').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      return restore();
+    });
+    render(<App connection={connectInMemory(service)} chats={chats} />, { container: secondTab });
+    await advance(0);
+    await advance(1_000);
+    // Then
+    expect([
+      (first.getByRole('searchbox', { name: 'Search your chats' }) as HTMLInputElement).value,
+      (first.getByRole('radio', { name: 'Hermes' }) as HTMLInputElement).checked,
+    ]).toEqual(['herm', true]);
   });
 });
