@@ -8,6 +8,7 @@ A Chrome extension that sends the current page's link to one Telegram chat from 
 2. Copy `.env.example` to `.env`. Fill `WXT_API_ID` and `WXT_API_HASH` from my.telegram.org.
 3. Run `pnpm build`.
 4. Open `chrome://extensions` (or `brave://extensions`), turn on Developer mode, click Load unpacked, and pick `.output/chrome-mv3`.
+5. Pin Glider to the toolbar. On a web page, click the Glider icon or press ⌘⇧S (Ctrl+Shift+S on Windows and Linux) to send the page. Undo in the popup within 5 seconds stops it.
 
 ## Check
 

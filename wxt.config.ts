@@ -9,8 +9,15 @@ export default defineConfig({
   manifest: {
     name: 'Glider',
     description: 'Send the page link to Telegram.',
-    permissions: ['storage'],
+    // activeTab reads the page only after the user opens the popup, and shows no install warning.
+    permissions: ['storage', 'activeTab'],
     action: { default_title: 'Glider' },
+    // The shortcut opens the popup like a click, and opening the popup is the send.
+    commands: {
+      _execute_action: {
+        suggested_key: { default: 'Ctrl+Shift+S', mac: 'Command+Shift+S' },
+      },
+    },
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
