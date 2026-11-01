@@ -1,0 +1,472 @@
+:root {
+  --bg: #f7f8fa;
+  --card: #fff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --red: #dc2626;
+  --green: #16a34a;
+  --radius-card: 12px;
+  --radius-control: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+}
+
+.page {
+  width: 656px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 40px 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.header-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.header-sub {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.header-account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.muted {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.qr-step {
+  display: flex;
+  gap: 24px;
+}
+
+.qr-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 200px;
+  height: 200px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.qr-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.qr-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.qr-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.countdown {
+  margin: 0;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.badge-done {
+  background: var(--green);
+  color: #fff;
+}
+
+.chip-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.form p {
+  margin: 0;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.prompt {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.phone-row,
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.input-country {
+  width: 72px;
+}
+
+.input-grow {
+  width: 240px;
+}
+
+.code-box {
+  width: 40px;
+  height: 48px;
+  padding: 0;
+  text-align: center;
+  font-size: 18px;
+}
+
+.error {
+  font-size: 13px;
+  color: var(--red);
+}
+
+.button {
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.links {
+  display: flex;
+  gap: 16px;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-input {
+  width: 280px;
+  padding-right: 40px;
+}
+
+.eye {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.eye:hover {
+  color: var(--text);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px 20px;
+}
+
+.banner-icon {
+  flex: none;
+  color: var(--red);
+}
+
+.banner-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.banner .link {
+  margin-left: auto;
+}
+
+.link-red {
+  color: var(--red);
+}
+
+.link-red:hover {
+  color: var(--red);
+}
+
+.dialog {
+  width: 400px;
+  max-width: calc(100% - 32px);
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--card);
+  color: var(--text);
+}
+
+.dialog::backdrop {
+  background: rgb(17 24 39 / 40%);
+}
+
+.dialog-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dialog-text {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.dialog .error {
+  margin: 0 0 16px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.button-plain {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button-plain:hover {
+  background: #f9fafb;
+}
+
+.button-red,
+.button-red:hover:not(:disabled) {
+  background: var(--red);
+}
+
+.offline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.offline-icon {
+  flex: none;
+  color: var(--red);
+}
+
+.offline-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.offline .button {
+  margin-left: auto;
+}
+
+.qr-expired {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* Fonts keep different space under the baseline (Linux's Nimbus Sans keeps a lot), so a
+   centered line box put the letters 3 px high there. Trimming each line to cap height and
+   baseline centers the letters themselves, in any font. */
+.header-title,
+.header-sub,
+.header-account > span,
+.badge > span,
+.avatar > span,
+.card-title,
+.chip-done > span,
+.account-text,
+.button,
+.button-plain,
+.banner-text,
+.banner .link,
+.offline-text {
+  text-box: trim-both cap alphabetic;
+}
