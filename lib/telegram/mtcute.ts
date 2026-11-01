@@ -1,6 +1,7 @@
 import { Chat as TgChat, TelegramClient, tl, User } from '@mtcute/web';
 import { AuthError, type Account, type TelegramAuth } from './auth';
 import type { Chat, ChatId, TelegramChats } from './chats';
+import type { TelegramSend } from './send';
 
 const TIMEOUT_MS = 15_000;
 const DATABASE = 'glider';
@@ -309,6 +310,22 @@ export function createMtcuteChats(client: MtcuteClient): TelegramChats {
       } catch {
         return null;
       }
+    },
+  };
+}
+
+export function createMtcuteSend(client: MtcuteClient): TelegramSend {
+  return {
+    async account() {
+      const t = client.get();
+      await t.prepare();
+      return (await t.storage.self.fetch())?.userId ?? null;
+    },
+    async sendText(chat, text) {
+      const t = client.get();
+      // The spike sent only after start had loaded the user (issue #5, Known).
+      await t.start({});
+      await t.sendText(chat, text);
     },
   };
 }

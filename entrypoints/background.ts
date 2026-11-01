@@ -19,6 +19,7 @@ import {
   createMtcuteAuth,
   createMtcuteChats,
   createMtcuteClient,
+  createMtcuteSend,
   type MtcuteClient,
 } from '../lib/telegram/mtcute';
 
@@ -43,11 +44,7 @@ export default defineBackground({
     let chats: TelegramChats | null = null;
     serveChats(() => chats);
 
-    const sender = createSendService(
-      fake
-        ? createFakeSend()
-        : { account: async () => null, sendText: () => Promise.reject(new Error('send')) },
-    );
+    const sender = createSendService(fake ? createFakeSend() : createMtcuteSend(client));
     serveSend(sender);
     void sender.start();
 
