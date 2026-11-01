@@ -1,6 +1,7 @@
 import { storage } from 'wxt/utils/storage';
 import { AuthError, type Account, type QrCode, type TelegramAuth } from './auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from './chats';
+import type { TelegramSend } from './send';
 
 export type FakeScenario =
   | 'default'
@@ -189,6 +190,22 @@ export function createFakeChats({ scenario }: { scenario: FakeScenario }): Teleg
     },
     async photo(id) {
       return id === 7005 ? FAKE_PHOTO : null;
+    },
+  };
+}
+
+export type FakeSend = TelegramSend & { sent: { chat: ChatId; text: string }[] };
+
+// The fake build's sends go nowhere; `sent` lets a test see them.
+export function createFakeSend(): FakeSend {
+  const sent: { chat: ChatId; text: string }[] = [];
+  return {
+    sent,
+    async account() {
+      return (await fakeSession.getValue())?.id ?? null;
+    },
+    async sendText(chat, text) {
+      sent.push({ chat, text });
     },
   };
 }
