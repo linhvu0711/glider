@@ -488,7 +488,7 @@ body {
 }
 
 .chat-list {
-  max-height: 406px;
+  max-height: 408px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
