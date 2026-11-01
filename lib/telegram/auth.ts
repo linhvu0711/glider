@@ -1,4 +1,5 @@
-export type Account = { name: string; initials: string };
+/** `id` is the Telegram user id. */
+export type Account = { id: number; name: string; initials: string };
 
 /** `expires` is ms since the epoch. */
 export type QrCode = { url: string; expires: number };

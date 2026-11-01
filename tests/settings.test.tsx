@@ -12,6 +12,8 @@ import {
   createFakeChats,
   FAKE_CHATS,
   FAKE_PHOTO,
+  LINH,
+  MINH,
   type FakeScenario,
 } from '../lib/telegram/fake';
 
@@ -414,8 +416,6 @@ describe('2-step password', () => {
 });
 
 describe('saved session', () => {
-  const MINH = { name: 'Minh Anh', initials: 'MA' };
-
   test('shows the account row when a saved session is still good', async () => {
     // Given: fake saved session Minh Anh, scenario default
     await storage.setItem('local:fakeSession', MINH);
@@ -600,7 +600,7 @@ describe('no internet', () => {
 
   test('says Telegram cannot be reached when the session check times out', async () => {
     // Given: fake saved session Minh Anh, scenario offline
-    await storage.setItem('local:fakeSession', { name: 'Minh Anh', initials: 'MA' });
+    await storage.setItem('local:fakeSession', MINH);
     // When: render, advance 2 s
     renderApp('offline');
     await advance(2_000);
@@ -712,8 +712,6 @@ describe('two tabs', () => {
   });
 });
 
-const MINH_SESSION = { name: 'Minh Anh', initials: 'MA' };
-
 function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElement }) {
   const service = createLoginService(createFakeAuth({ scenario }), 'Chromium on Linux');
   return render(
@@ -745,7 +743,7 @@ describe('choose the chat', () => {
 
   test('shows the line, the search box, and Recent chats when logged in', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When
     renderSettings('default');
     await advance(0);
@@ -762,7 +760,7 @@ describe('choose the chat', () => {
 
   test('shows each chat with its second line and tag', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When
     renderSettings('default');
     await advance(0);
@@ -783,7 +781,7 @@ describe('choose the chat', () => {
 
   test('shows Saved Messages as Your own chat', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When
     renderSettings('default');
     await advance(0);
@@ -794,7 +792,7 @@ describe('choose the chat', () => {
 
   test('shows the chat photo when the chat has one', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When
     renderSettings('default');
     await advance(0);
@@ -806,7 +804,7 @@ describe('choose the chat', () => {
 describe('choose the chat: loading and errors', () => {
   test('shows grey rows while chats load', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When: chats take 5 s, advance 1 s
     renderSettings('chats-slow');
     await advance(1_000);
@@ -816,7 +814,7 @@ describe('choose the chat: loading and errors', () => {
 
   test('says the chats could not load', async () => {
     // Given: saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     // When: log in, then the first load fails after 1 s
     renderSettings('chats-error');
     await advance(0);
@@ -831,7 +829,7 @@ describe('choose the chat: loading and errors', () => {
 
   test('Try again loads the chats', async () => {
     // Given: saved session Minh Anh, the first load failed
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
     renderSettings('chats-error');
     await advance(0);
@@ -848,7 +846,7 @@ describe('choose the chat: loading and errors', () => {
 
 describe('choose the chat: search', () => {
   async function loggedInSearch() {
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
     renderSettings('default');
     await advance(0);
@@ -898,7 +896,7 @@ describe('choose the chat: save', () => {
   const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes');
 
   async function loggedIn() {
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
     renderSettings('default');
     await advance(0);
@@ -930,12 +928,16 @@ describe('choose the chat: save', () => {
       screen.getByRole('status').textContent,
       !!within(stepTwo()).getByText('Done'),
       await storage.getItem('local:targetChat'),
-    ]).toEqual(['Saved. Links now go to Read Later Bot.', true, READ_LATER]);
+    ]).toEqual([
+      'Saved. Links now go to Read Later Bot.',
+      true,
+      { account: MINH.id, chat: READ_LATER },
+    ]);
   });
 
   test('shows the saved chat first with the tag Current', async () => {
     // Given: Hermes saved
-    await storage.setItem('local:targetChat', HERMES);
+    await storage.setItem('local:targetChat', { account: MINH.id, chat: HERMES });
     // When
     await loggedIn();
     // Then
@@ -970,7 +972,7 @@ describe('choose the chat: save', () => {
 
   test('two tabs that save the same chat keep one saved chat', async () => {
     // Given: saved session Minh Anh, two pages
-    await storage.setItem('local:fakeSession', MINH_SESSION);
+    await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
     const tabs = [document.createElement('div'), document.createElement('div')];
     for (const tab of tabs) {
@@ -986,6 +988,20 @@ describe('choose the chat: save', () => {
       await advance(0);
     }
     // Then
-    expect(await storage.getItem('local:targetChat')).toEqual(READ_LATER);
+    expect(await storage.getItem('local:targetChat')).toEqual({ account: MINH.id, chat: READ_LATER });
+  });
+  test('another account starts with no saved chat', async () => {
+    // Given: Hermes saved by Linh Vu
+    await storage.setItem('local:targetChat', { account: LINH.id, chat: HERMES });
+    // When: Minh Anh is logged in
+    await loggedIn();
+    // Then
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect([
+      radios[0]?.getAttribute('aria-label'),
+      radios.some((radio) => radio.checked),
+      screen.queryByText('Current'),
+      within(stepTwo()).queryByText('Done'),
+    ]).toEqual(['Saved Messages', false, null, null]);
   });
 });

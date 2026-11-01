@@ -123,14 +123,16 @@ export function photoUrl(bytes: Uint8Array): string {
   return `data:image/jpeg;base64,${btoa(binary)}`;
 }
 
-function toAccount(user: { firstName?: string | null; lastName?: string | null }): Account {
+type AccountUser = { id: number; firstName?: string | null; lastName?: string | null };
+
+function toAccount(user: AccountUser): Account {
   const parts = [user.firstName, user.lastName].filter((p): p is string => !!p);
   const name = parts.join(' ') || 'Telegram user';
   const initials = (parts.length > 0 ? parts : [name])
     .slice(0, 2)
     .map((p) => p.charAt(0).toUpperCase())
     .join('');
-  return { name, initials };
+  return { id: user.id, name, initials };
 }
 
 function deleteDatabase(): Promise<void> {
@@ -183,7 +185,7 @@ export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
     }
   }
 
-  async function finishLogin<T extends { firstName?: string | null; lastName?: string | null }>(
+  async function finishLogin<T extends AccountUser>(
     login: Promise<T>,
   ): Promise<Account | 'password'> {
     try {

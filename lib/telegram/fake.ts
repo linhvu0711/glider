@@ -42,9 +42,9 @@ const SLOW_MS = 5_000;
 const OFFLINE_MS = 1_000;
 const SCAN_AFTER_MS = 3_000;
 
-const LINH: Account = { name: 'Linh Vu', initials: 'LV' };
-const MINH: Account = { name: 'Minh Anh', initials: 'MA' };
-const TUAN: Account = { name: 'Tuan Vu', initials: 'TV' };
+export const LINH: Account = { id: 7100, name: 'Linh Vu', initials: 'LV' };
+export const MINH: Account = { id: 7101, name: 'Minh Anh', initials: 'MA' };
+const TUAN: Account = { id: 7102, name: 'Tuan Vu', initials: 'TV' };
 const PASSWORD = 'glider-pass';
 
 function wait(ms: number): Promise<void> {

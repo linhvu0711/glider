@@ -7,7 +7,7 @@ import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
-import { targetChat } from '../../lib/target-chat';
+import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
 import {
   AlertIcon,
   BookmarkIcon,
@@ -57,7 +57,12 @@ export default function App({
         <>
           {view.notice && <LoggedOutBanner send={connection.send} />}
           <LoginCard login={view.login} send={connection.send} />
-          {chats && <TargetCard loggedIn={view.login.step === 'done'} chats={chats} />}
+          {chats && (
+            <TargetCard
+              account={view.login.step === 'done' ? view.login.account : null}
+              chats={chats}
+            />
+          )}
         </>
       )}
       <footer className="footer">
@@ -564,8 +569,8 @@ function matches(chat: Chat, query: string): boolean {
 
 const TOAST_MS = 4_000;
 
-function useTargetChat(): Chat | null | undefined {
-  const [saved, setSaved] = useState<Chat | null | undefined>(undefined);
+function useTargetChat(account: Account | null): Chat | null | undefined {
+  const [saved, setSaved] = useState<TargetChat | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
     void targetChat.getValue().then((value) => {
@@ -577,12 +582,14 @@ function useTargetChat(): Chat | null | undefined {
       unwatch();
     };
   }, []);
-  return saved;
+  if (saved === undefined) return undefined;
+  return account ? targetChatFor(saved, account.id) : null;
 }
 
-function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramChats }) {
+function TargetCard({ account, chats }: { account: Account | null; chats: TelegramChats }) {
+  const loggedIn = account !== null;
   const { list, retry } = useChatList(loggedIn, chats);
-  const saved = useTargetChat();
+  const saved = useTargetChat(account);
   const [picked, setPicked] = useState<ChatId | null>(null);
   // The saved chat moves to the top once per load, never under the pointer at Save.
   const [pinned, setPinned] = useState<Chat | null>(null);
@@ -620,8 +627,8 @@ function TargetCard({ loggedIn, chats }: { loggedIn: boolean; chats: TelegramCha
   const changed = pickedChat !== null && pickedChat.id !== saved?.id;
 
   async function save() {
-    if (!pickedChat) return;
-    await targetChat.setValue(pickedChat);
+    if (!account || !pickedChat) return;
+    await targetChat.setValue({ account: account.id, chat: pickedChat });
     setToast(`Saved. Links now go to ${pickedChat.name}.`);
   }
 
