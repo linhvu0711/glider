@@ -26,6 +26,9 @@ const sendList = storage.defineItem<Sends>('local:links', {
 const browserOpen = storage.defineItem<boolean>('session:browserOpen', { fallback: false });
 
 const UNDO_MS = 5_000;
+// How long a send waits for Telegram. With no network mtcute waits forever, so no answer in
+// time means no internet.
+const ANSWER_MS = 15_000;
 // How long a sent link stays in the popup.
 const SHOWN_MS = 2_500;
 const SEND_LIMIT = 10;
@@ -81,6 +84,14 @@ function failureOf(e: unknown, now: number): LinkFailure {
   return failure.reason === 'wait'
     ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
     : { reason: failure.reason };
+}
+
+// Rejects with the signal's reason when it aborts first.
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    promise.then(resolve, reject);
+  });
 }
 
 function retryIn(failure: LinkFailure, now: number): number {
@@ -223,10 +234,22 @@ export function createSendService(telegram: TelegramSend): SendService {
   // send rules.
   async function sendToTelegram(link: Link): Promise<LinkFailure | null> {
     if (!navigator.onLine) return { reason: 'offline' };
-    return telegram.sendText(link.chat.id, link.page.url, link.id).then(
-      () => null,
-      (e: unknown) => failureOf(e, Date.now()),
+    const limit = new AbortController();
+    const timer = setTimeout(
+      () => limit.abort(new SendError({ reason: 'offline' })),
+      ANSWER_MS,
     );
+    try {
+      await untilAborted(
+        telegram.sendText(link.chat.id, link.page.url, link.id, limit.signal),
+        limit.signal,
+      );
+      return null;
+    } catch (e) {
+      return failureOf(e, Date.now());
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function deliver(link: Link) {

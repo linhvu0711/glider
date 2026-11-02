@@ -385,11 +385,12 @@ describe('failed sends', () => {
   test('the fake fails a #fail page once, then sends it', async () => {
     // Given
     const telegram = createFakeSend();
+    const signal = new AbortController().signal;
     // When
     const first = await telegram
-      .sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k')
+      .sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k', signal)
       .catch((e: SendError) => e.failure);
-    await telegram.sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k');
+    await telegram.sendText(READ_LATER.id, 'https://example.com/#fail=offline', 'k', signal);
     // Then
     expect([first, telegram.sent.map((m) => m.text)]).toEqual([
       { reason: 'offline' },
@@ -759,6 +760,21 @@ describe('send rules', () => {
     expect([(await links())[0], telegram.sent]).toMatchObject([
       { status: 'failed', failure: { reason: 'offline' } },
       [],
+    ]);
+  });
+
+  test('fails as no internet when Telegram gives no answer in 15 s', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; a send that never answers
+    const { sender } = await setUp({ telegram: scripted(() => new Promise<void>(() => {})) });
+    // When
+    await sender.open(EXAMPLE);
+    await advance(5_000 + 14_999);
+    const before = await statuses();
+    await advance(1);
+    // Then
+    expect([before, (await links())[0]]).toMatchObject([
+      ['sending'],
+      { status: 'failed', failure: { reason: 'offline' } },
     ]);
   });
 });
