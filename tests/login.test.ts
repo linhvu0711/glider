@@ -343,6 +343,19 @@ describe('phone login', () => {
     ]);
   });
 
+  test('ignores a code before one was sent', async () => {
+    // Given: on the phone step; no code sent
+    const { service, views } = await onPhoneStep();
+    // When
+    service.send({ type: 'submitCode', code: '12345' });
+    await advance(0);
+    // Then
+    expect([lastLogin(views)?.step, await storage.getItem('local:fakeSession')]).toEqual([
+      'phone',
+      null,
+    ]);
+  });
+
   test('says Telegram does not know the number', async () => {
     // Given: on the phone step
     const { service, views } = await onPhoneStep();

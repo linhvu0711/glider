@@ -55,7 +55,6 @@ function wait(ms: number): Promise<void> {
 export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
   let scenario = options.scenario;
   let tokenCount = 0;
-  let phone = '';
   let restores = 0;
   // One scan per fake, like one phone: a QR login after a log out waits like a real one.
   let scanned = false;
@@ -122,14 +121,13 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
     async sendCode(number) {
       await respond();
       if (number === '84999999999') throw new AuthError('bad-phone');
-      phone = number;
-      return { length: 5 };
+      return { phone: number, length: 5, hash: 'fake-hash' };
     },
-    async submitCode(code) {
+    async submitCode(sent, code) {
       await respond();
       if (code === '00000') throw new AuthError('code-expired');
       if (code !== '12345') throw new AuthError('bad-code');
-      return phone === '84900000002' ? 'password' : logIn(MINH);
+      return sent.phone === '84900000002' ? 'password' : logIn(MINH);
     },
     async submitPassword(password) {
       await respond();

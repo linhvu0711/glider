@@ -471,6 +471,72 @@ describe('mtcute login', () => {
     expect(kind).toBe('offline');
   });
 
+  test('sends a code and gives back its receipt', async () => {
+    // Given: Telegram sends a 5-digit code with id h1
+    const { stub } = authStub({
+      sendCode: async () => ({ phoneCodeHash: 'h1', length: 5 }),
+    });
+    // When
+    const sent = await createMtcuteAuth(stub).sendCode('84912345678');
+    // Then
+    expect(sent).toEqual({ phone: '84912345678', length: 5, hash: 'h1' });
+  });
+
+  test("checks the code with the receipt's number and id", async () => {
+    // Given: the code is right for Minh Anh; the stub keeps what it was asked
+    let asked: Record<string, unknown> = {};
+    const { stub } = authStub({
+      signIn: async (params: Record<string, unknown>) => {
+        asked = params;
+        return { id: 7101, firstName: 'Minh', lastName: 'Anh' };
+      },
+    });
+    // When
+    const account = await createMtcuteAuth(stub).submitCode(
+      { phone: '84912345678', length: 5, hash: 'h1' },
+      '12345',
+    );
+    // Then
+    expect([
+      account,
+      { phone: asked.phone, phoneCodeHash: asked.phoneCodeHash, phoneCode: asked.phoneCode },
+    ]).toEqual([
+      { id: 7101, name: 'Minh Anh', initials: 'MA' },
+      { phone: '84912345678', phoneCodeHash: 'h1', phoneCode: '12345' },
+    ]);
+  });
+
+  test('asks for the password after the code when the account has one', async () => {
+    // Given: the code is right, and the account has a password
+    const { stub } = authStub({
+      signIn: async () => {
+        throw new tl.RpcError(401, 'SESSION_PASSWORD_NEEDED');
+      },
+    });
+    // When
+    const result = await createMtcuteAuth(stub).submitCode(
+      { phone: '84912345678', length: 5, hash: 'h1' },
+      '12345',
+    );
+    // Then
+    expect(result).toBe('password');
+  });
+
+  test('says the code is wrong', async () => {
+    // Given: Telegram turns the code down
+    const { stub } = authStub({
+      signIn: async () => {
+        throw new tl.RpcError(400, 'PHONE_CODE_INVALID');
+      },
+    });
+    // When
+    const kind = await kindOf(
+      createMtcuteAuth(stub).submitCode({ phone: '84912345678', length: 5, hash: 'h1' }, '12345'),
+    );
+    // Then
+    expect(kind).toBe('bad-code');
+  });
+
   test('logs in with the password', async () => {
     // Given: the password is right for Tuan Vu
     const { stub } = authStub({

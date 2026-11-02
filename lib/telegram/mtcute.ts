@@ -230,8 +230,6 @@ export function createMtcuteClient(
 }
 
 export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
-  let phone = '';
-  let phoneCodeHash = '';
   const tg = () => client.get();
 
   async function call<T>(run: (tg: TelegramClient, signal: AbortSignal) => Promise<T>) {
@@ -296,16 +294,14 @@ export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
     async sendCode(number) {
       const sent = await call((t, abortSignal) => t.sendCode({ phone: number, abortSignal }));
       if (!('phoneCodeHash' in sent)) throw new AuthError('offline');
-      phone = number;
-      phoneCodeHash = sent.phoneCodeHash;
-      return { length: sent.length };
+      return { phone: number, length: sent.length, hash: sent.phoneCodeHash };
     },
 
-    submitCode(code) {
+    submitCode(sent, code) {
       return finishLogin(
         tg().signIn({
-          phone,
-          phoneCodeHash,
+          phone: sent.phone,
+          phoneCodeHash: sent.hash,
           phoneCode: code,
           abortSignal: AbortSignal.timeout(TIMEOUT_MS),
         }),

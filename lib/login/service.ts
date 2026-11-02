@@ -1,6 +1,6 @@
 import { storage } from 'wxt/utils/storage';
 import { checkPhone } from '../phone';
-import { AuthError, type Account, type TelegramAuth } from '../telegram/auth';
+import { AuthError, type Account, type SentCode, type TelegramAuth } from '../telegram/auth';
 import type { LoginCommand, LoginStep, LoginView } from './state';
 
 export interface LoginService {
@@ -50,6 +50,8 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   let view: LoginView = { login: { step: 'checking' }, notice: false, account: null };
   const listeners = new Set<(view: LoginView) => void>();
   let qr: AbortController | null = null;
+  // The last code Telegram sent; the code step checks against it.
+  let sentCode: SentCode | null = null;
 
   let checking = false;
 
@@ -142,8 +144,8 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
         : { ...current, error: null, busy: true },
     );
     try {
-      const { length } = await auth.sendCode(phone);
-      show({ step: 'code', phone, length, error: null, busy: false });
+      sentCode = await auth.sendCode(phone);
+      show({ step: 'code', phone, length: sentCode.length, error: null, busy: false });
     } catch (e) {
       if (kindOf(e) === 'bad-phone') show({ step: 'phone', error: UNKNOWN_NUMBER, busy: false });
       else show({ step: 'offline' });
@@ -152,10 +154,11 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
 
   async function submitCode(code: string) {
     const current = view.login;
-    if (current.step !== 'code') return;
+    const sent = sentCode;
+    if (current.step !== 'code' || sent === null) return;
     show({ ...current, error: null, busy: true });
     try {
-      const result = await auth.submitCode(code);
+      const result = await auth.submitCode(sent, code);
       if (result === 'password') show({ step: 'password', error: null, busy: false });
       else done(result);
     } catch (e) {
