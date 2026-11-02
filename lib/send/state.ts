@@ -22,8 +22,6 @@ export type Link = {
   | { status: 'failed'; failure: LinkFailure }
 );
 
-export type LinkStatus = Link['status'];
-
 /** Newest link first. `times` holds the ms of each send that added a link, for the send limit. */
 export type Sends = { links: Link[]; times: number[] };
 
