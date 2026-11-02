@@ -7,13 +7,6 @@ export interface LoginConnection {
   subscribe(listener: (view: LoginView) => void): () => void;
 }
 
-export function connectInMemory(service: LoginService): LoginConnection {
-  return {
-    send: (command) => service.send(command),
-    subscribe: (listener) => service.subscribe(listener),
-  };
-}
-
 const PING_EVERY_MS = 20_000;
 const RECONNECT_AFTER_MS = 500;
 

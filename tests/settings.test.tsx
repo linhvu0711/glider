@@ -5,7 +5,6 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { chatsGroup, connectChats } from '../lib/chats/connection';
-import { connectInMemory } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
@@ -37,7 +36,7 @@ async function advance(ms: number) {
 function renderApp(scenario: FakeScenario, device = 'Chromium on Linux') {
   const auth = createFakeAuth({ scenario });
   const service = createLoginService(auth, device);
-  render(<App connection={connectInMemory(service)} />);
+  render(<App connection={service} />);
   return { auth, service };
 }
 
@@ -707,7 +706,7 @@ function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElem
   const fakeChats = createFakeChats({ scenario });
   return render(
     <App
-      connection={connectInMemory(service)}
+      connection={service}
       chats={connectChats(memoryPath([served(chatsGroup, () => fakeChats)]))}
     />,
     options?.container ? { container: options.container } : undefined,
@@ -1044,7 +1043,7 @@ describe('choose the chat: save', () => {
     const chats = connectChats(memoryPath([served(chatsGroup, () => fakeChats)]));
     const firstTab = document.body.appendChild(document.createElement('div'));
     const secondTab = document.body.appendChild(document.createElement('div'));
-    render(<App connection={connectInMemory(service)} chats={chats} />, { container: firstTab });
+    render(<App connection={service} chats={chats} />, { container: firstTab });
     await advance(0);
     const first = within(firstTab);
     await user.type(first.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
@@ -1055,7 +1054,7 @@ describe('choose the chat: save', () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       return restore();
     });
-    render(<App connection={connectInMemory(service)} chats={chats} />, { container: secondTab });
+    render(<App connection={service} chats={chats} />, { container: secondTab });
     await advance(0);
     await advance(1_000);
     // Then
