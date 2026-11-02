@@ -6,7 +6,7 @@ import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
-import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
+import { saveTargetChat, watchTargetChat } from '../../lib/target-chat';
 import { browser } from 'wxt/browser';
 import { ChatAvatar } from '../../components/chat-avatar';
 import { ShortcutKeys } from '../../components/shortcut-keys';
@@ -557,20 +557,13 @@ function matches(chat: Chat, query: string): boolean {
 const TOAST_MS = 4_000;
 
 function useTargetChat(account: Account | null): Chat | null | undefined {
-  const [saved, setSaved] = useState<TargetChat | null | undefined>(undefined);
+  const [saved, setSaved] = useState<Chat | null | undefined>(undefined);
+  const id = account?.id;
   useEffect(() => {
-    let live = true;
-    void targetChat.getValue().then((value) => {
-      if (live) setSaved(value);
-    });
-    const unwatch = targetChat.watch((value) => setSaved(value));
-    return () => {
-      live = false;
-      unwatch();
-    };
-  }, []);
-  if (saved === undefined) return undefined;
-  return account ? targetChatFor(saved, account.id) : null;
+    if (id === undefined) return;
+    return watchTargetChat(id, setSaved);
+  }, [id]);
+  return account ? saved : null;
 }
 
 function TargetCard({ account, chats }: { account: Account | null; chats: TelegramChats }) {
@@ -620,7 +613,7 @@ function TargetCard({ account, chats }: { account: Account | null; chats: Telegr
 
   async function save() {
     if (!account || !pickedChat) return;
-    await targetChat.setValue({ account: account.id, chat: pickedChat });
+    await saveTargetChat(account.id, pickedChat);
     setToast(`Saved. Links now go to ${pickedChat.name}.`);
   }
 

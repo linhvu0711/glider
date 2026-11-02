@@ -7,6 +7,7 @@ import App from '../entrypoints/options/App';
 import { chatsGroup, connectChats } from '../lib/chats/connection';
 import { createLoginService } from '../lib/login/service';
 import { memoryPath, served } from '../lib/messages';
+import { readTargetChat, saveTargetChat } from '../lib/target-chat';
 import {
   createFakeAuth,
   createFakeChats,
@@ -839,8 +840,8 @@ describe('choose the chat: search', () => {
 });
 
 describe('choose the chat: save', () => {
-  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot');
-  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes');
+  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
+  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes')!;
 
   async function loggedIn() {
     await storage.setItem('local:fakeSession', MINH);
@@ -851,7 +852,7 @@ describe('choose the chat: save', () => {
   }
 
   test('picking another chat turns on Save and names it', async () => {
-    // Given: saved session Minh Anh, nothing saved in local:targetChat
+    // Given: saved session Minh Anh, no target chat saved
     const user = await loggedIn();
     // When
     await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
@@ -874,17 +875,17 @@ describe('choose the chat: save', () => {
     expect([
       screen.getByRole('status').textContent,
       !!within(stepTwo()).getByText('Done'),
-      await storage.getItem('local:targetChat'),
+      await readTargetChat(MINH.id),
     ]).toEqual([
       'Saved. Links now go to Read Later Bot.',
       true,
-      { account: MINH.id, chat: READ_LATER },
+      READ_LATER,
     ]);
   });
 
   test('shows the saved chat first with the tag Current', async () => {
     // Given: Hermes saved
-    await storage.setItem('local:targetChat', { account: MINH.id, chat: HERMES });
+    await saveTargetChat(MINH.id, HERMES);
     // When
     await loggedIn();
     // Then
@@ -950,7 +951,7 @@ describe('choose the chat: save', () => {
   });
   test('another account starts with no saved chat', async () => {
     // Given: Hermes saved by Linh Vu
-    await storage.setItem('local:targetChat', { account: LINH.id, chat: HERMES });
+    await saveTargetChat(LINH.id, HERMES);
     // When: Minh Anh is logged in
     await loggedIn();
     // Then
