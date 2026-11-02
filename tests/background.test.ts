@@ -4,6 +4,7 @@ import { storage } from 'wxt/utils/storage';
 import { connectChats } from '../lib/chats/connection';
 import { connectSend } from '../lib/send/connection';
 import type { Page } from '../lib/send/state';
+import { saveTargetChat } from '../lib/target-chat';
 import { FAKE_CHATS, LINH, MINH } from '../lib/telegram/fake';
 
 const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
@@ -28,7 +29,7 @@ afterEach(() => {
 
 async function startBackground() {
   await storage.setItem('local:fakeSession', LINH);
-  await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+  await saveTargetChat(LINH.id, READ_LATER);
   const background = (await import('../entrypoints/background')).default;
   background.main();
 }

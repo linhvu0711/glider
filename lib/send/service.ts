@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import { storage } from 'wxt/utils/storage';
-import { targetChat, targetChatFor } from '../target-chat';
+import { readTargetChat } from '../target-chat';
 import { SendError, type TelegramSend } from '../telegram/send';
 import {
   addressOf,
@@ -260,7 +260,7 @@ export function createSendService(telegram: TelegramSend): SendService {
     open(page) {
       return serial(async (): Promise<Opened> => {
         const account = await telegram.account();
-        const chat = account === null ? null : targetChatFor(await targetChat.getValue(), account);
+        const chat = account === null ? null : await readTargetChat(account);
         if (account === null || !chat) return { kind: 'setup' };
         if (!page || !isWebPage(page.url)) return { kind: 'not-web', chat };
         const waiting = state.links.find(

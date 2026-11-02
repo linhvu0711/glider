@@ -6,6 +6,7 @@ import Popup from '../entrypoints/popup/Popup';
 import { chatsGroup, connectChats } from '../lib/chats/connection';
 import { memoryPath, served } from '../lib/messages';
 import { connectSend, sendGroup } from '../lib/send/connection';
+import { saveTargetChat } from '../lib/target-chat';
 import { createSendService } from '../lib/send/service';
 import type { Page } from '../lib/send/state';
 import { createFakeChats, createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
@@ -37,7 +38,7 @@ async function setUp({
   telegram = createFakeSend(),
 }: { saved?: boolean; telegram?: FakeSend | TelegramSend } = {}) {
   await storage.setItem('local:fakeSession', LINH);
-  if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+  if (saved) await saveTargetChat(LINH.id, READ_LATER);
   const service = createSendService(telegram);
   await service.start();
   const sender = connectSend(memoryPath([served(sendGroup, service)]));
