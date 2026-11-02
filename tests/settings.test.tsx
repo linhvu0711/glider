@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
-import { chatsGroup, connectChats } from '../lib/chats/connection';
 import { createLoginService } from '../lib/login/service';
 import { memoryPath, served } from '../lib/messages';
+import { chatsGroup, connectChats, readTargetChat, saveTargetChat } from '../lib/target-chat';
 import {
   createFakeAuth,
   createFakeChats,
@@ -661,7 +661,7 @@ function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElem
   return render(
     <App
       connection={service}
-      chats={connectChats(memoryPath([served(chatsGroup, () => fakeChats)]))}
+      chats={connectChats(memoryPath([served(chatsGroup, fakeChats)]))}
     />,
     options?.container ? { container: options.container } : undefined,
   );
@@ -839,8 +839,8 @@ describe('choose the chat: search', () => {
 });
 
 describe('choose the chat: save', () => {
-  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot');
-  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes');
+  const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
+  const HERMES = FAKE_CHATS.find((chat) => chat.name === 'Hermes')!;
 
   async function loggedIn() {
     await storage.setItem('local:fakeSession', MINH);
@@ -851,7 +851,7 @@ describe('choose the chat: save', () => {
   }
 
   test('picking another chat turns on Save and names it', async () => {
-    // Given: saved session Minh Anh, nothing saved in local:targetChat
+    // Given: saved session Minh Anh, no target chat saved
     const user = await loggedIn();
     // When
     await user.click(screen.getByRole('radio', { name: 'Read Later Bot' }));
@@ -874,17 +874,17 @@ describe('choose the chat: save', () => {
     expect([
       screen.getByRole('status').textContent,
       !!within(stepTwo()).getByText('Done'),
-      await storage.getItem('local:targetChat'),
+      await readTargetChat(MINH.id),
     ]).toEqual([
       'Saved. Links now go to Read Later Bot.',
       true,
-      { account: MINH.id, chat: READ_LATER },
+      READ_LATER,
     ]);
   });
 
   test('shows the saved chat first with the tag Current', async () => {
     // Given: Hermes saved
-    await storage.setItem('local:targetChat', { account: MINH.id, chat: HERMES });
+    await saveTargetChat(MINH.id, HERMES);
     // When
     await loggedIn();
     // Then
@@ -917,29 +917,40 @@ describe('choose the chat: save', () => {
     ]).toEqual(['Read Later Bot', true, true]);
   });
 
-  test('two tabs that save the same chat keep one saved chat', async () => {
-    // Given: saved session Minh Anh, two pages
+  test('a second tab shows the chat the first tab saved', async () => {
+    // Given: saved session Minh Anh, nothing saved, two pages
     await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
-    const tabs = [document.createElement('div'), document.createElement('div')];
-    for (const tab of tabs) {
+    const [first, second] = [document.createElement('div'), document.createElement('div')];
+    for (const tab of [first, second]) {
       document.body.appendChild(tab);
       renderSettings('default', { container: tab });
     }
     await advance(0);
-    // When: each page picks Read Later Bot and saves
-    for (const tab of tabs) {
-      await user.click(within(tab).getByRole('radio', { name: 'Read Later Bot' }));
-      const save = within(tab).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
-      if (!save.disabled) await user.click(save);
-      await advance(0);
-    }
+    const currentIn = (tab: HTMLElement) =>
+      within(tab)
+        .getByText('Current')
+        .closest('label')
+        ?.querySelector('input')
+        ?.getAttribute('aria-label');
+    // When: the first page saves Read Later Bot, then the second page saves Hermes
+    await user.click(within(first).getByRole('radio', { name: 'Read Later Bot' }));
+    await user.click(within(first).getByRole('button', { name: 'Save' }));
+    await advance(0);
+    const secondSaw = [
+      !!within(second).getByText('Links go to Read Later Bot.'),
+      (within(second).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled,
+      currentIn(second),
+    ];
+    await user.click(within(second).getByRole('radio', { name: 'Hermes' }));
+    await user.click(within(second).getByRole('button', { name: 'Save' }));
+    await advance(0);
     // Then
-    expect(await storage.getItem('local:targetChat')).toEqual({ account: MINH.id, chat: READ_LATER });
+    expect([...secondSaw, currentIn(first)]).toEqual([true, true, 'Read Later Bot', 'Hermes']);
   });
   test('another account starts with no saved chat', async () => {
     // Given: Hermes saved by Linh Vu
-    await storage.setItem('local:targetChat', { account: LINH.id, chat: HERMES });
+    await saveTargetChat(LINH.id, HERMES);
     // When: Minh Anh is logged in
     await loggedIn();
     // Then
@@ -994,7 +1005,7 @@ describe('choose the chat: save', () => {
     const auth = createFakeAuth({ scenario: 'default' });
     const service = createLoginService(auth, 'Chromium on Linux');
     const fakeChats = createFakeChats({ scenario: 'default' });
-    const chats = connectChats(memoryPath([served(chatsGroup, () => fakeChats)]));
+    const chats = connectChats(memoryPath([served(chatsGroup, fakeChats)]));
     const firstTab = document.body.appendChild(document.createElement('div'));
     const secondTab = document.body.appendChild(document.createElement('div'));
     render(<App connection={service} chats={chats} />, { container: firstTab });

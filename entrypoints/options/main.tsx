@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { connectChats } from '../../lib/chats/connection';
 import { connectLogin } from '../../lib/login/connection';
+import { connectChats } from '../../lib/target-chat';
 import App from './App';
 import '../../components/base.css';
 import './style.css';

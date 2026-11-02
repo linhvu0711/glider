@@ -6,7 +6,8 @@ import { connectSend, sendGroup } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import type { Page, Sends } from '../lib/send/state';
 import type { Account } from '../lib/telegram/auth';
-import { createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
+import { saveTargetChat } from '../lib/target-chat';
+import { createFakeSend, FAKE_CHATS, LINH, MINH, type FakeSend } from '../lib/telegram/fake';
 import { SendError, type TelegramSend } from '../lib/telegram/send';
 
 const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
@@ -31,7 +32,7 @@ async function setUp({
   telegram = createFakeSend(),
 }: { account?: Account | null; saved?: boolean; telegram?: FakeSend | TelegramSend } = {}) {
   await storage.setItem('local:fakeSession', account);
-  if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+  if (saved) await saveTargetChat(LINH.id, READ_LATER);
   const service = createSendService(telegram);
   await service.start();
   const sender = connectSend(memoryPath([served(sendGroup, service)]));
@@ -116,7 +117,7 @@ describe('send', () => {
   });
 
   test('asks to set up when no chat is saved', async () => {
-    // Given: Linh Vu logged in, nothing in local:targetChat
+    // Given: Linh Vu logged in, no target chat saved
     const { telegram, sender } = await setUp({ saved: false });
     // When
     const opened = await sender.open(EXAMPLE);
@@ -132,6 +133,17 @@ describe('send', () => {
     const opened = await sender.open(EXAMPLE);
     // Then
     expect(opened).toEqual({ kind: 'setup' });
+  });
+
+  test('asks to set up when another account saved the chat', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved by Minh Anh
+    const { telegram, sender } = await setUp({ saved: false });
+    await saveTargetChat(MINH.id, READ_LATER);
+    // When
+    const opened = await sender.open(EXAMPLE);
+    await advance(10_000);
+    // Then
+    expect([opened, await links(), telegram.sent]).toEqual([{ kind: 'setup' }, [], []]);
   });
 });
 
@@ -266,7 +278,7 @@ describe('worker wake-up and log out', () => {
     // Given: Linh Vu logged in, Read Later Bot saved; the store holds a waiting link due at
     // 10:00:03, a link in flight, and a sent link
     await storage.setItem('local:fakeSession', LINH);
-    await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+    await saveTargetChat(LINH.id, READ_LATER);
     const link = (id: string, page: Page, status: string, sendAt: number) => ({
       id,
       page,
@@ -686,7 +698,7 @@ describe('Chrome restart', () => {
   // A waiting link due at 10:00:03 and a link that failed earlier, saved before Chrome closed.
   async function savedBeforeClose() {
     await storage.setItem('local:fakeSession', LINH);
-    await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
+    await saveTargetChat(LINH.id, READ_LATER);
     const base = { account: LINH.id, chat: READ_LATER };
     await storage.setItem('local:links', {
       links: [
