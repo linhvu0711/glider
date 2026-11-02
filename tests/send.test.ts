@@ -458,6 +458,20 @@ describe('failed sends', () => {
       ['https://example.com/#fail=offline'],
     ]);
   });
+
+  test('the fake answers account checks from its list', async () => {
+    // Given
+    await storage.setItem('local:fakeSession', LINH);
+    await storage.setItem('local:fakeAccountChecks', ['ok', 'throws']);
+    const telegram = createFakeSend();
+    // When
+    const answers = [];
+    for (let call = 0; call < 3; call++) {
+      answers.push(await telegram.account().catch((e: Error) => e.message));
+    }
+    // Then
+    expect(answers).toEqual([LINH.id, 'The fake account check failed.', LINH.id]);
+  });
 });
 
 // A Telegram send that answers each call with the next entry: an error is thrown,

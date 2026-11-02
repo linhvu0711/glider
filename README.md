@@ -24,6 +24,7 @@ pnpm test
 Open the settings page with `?fake=<scenario>` to pick one: `default`, `slow`, `qr-scan`, `qr-password`, `qr-expire`, `offline`, `revoked`, `chats-slow`, `chats-error`.
 
 - A page whose address ends `#fail=offline`, `#fail=logged-out`, `#fail=unreachable`, `#fail=other`, or `#fail=wait-<n>` fails its first send with that reason. Retry sends it.
+- In the service worker's console, `chrome.storage.local.set({ fakeAccountChecks: ['ok', 'throws'] })` sets how the next checks of who is logged in answer, one entry each: `ok` answers, `throws` fails, `hangs` never answers. After the list, checks answer as normal.
 - Phone `+84 912345678` with code `12345` logs in as Minh Anh.
 - Phone `+84 900000002` with code `12345` asks for the 2-step password `glider-pass`.
 - Phone `+84 999999999` is a number Telegram does not know.

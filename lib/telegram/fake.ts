@@ -37,6 +37,12 @@ export const fakeSession = /* @__PURE__ */ storage.defineItem<Account | null>('l
   fallback: null,
 });
 
+// How the next account checks answer, one entry each, so a walk can make the check fail.
+const fakeAccountChecks = /* @__PURE__ */ storage.defineItem<('ok' | 'throws' | 'hangs')[]>(
+  'local:fakeAccountChecks',
+  { fallback: [] },
+);
+
 const QR_LIFE_MS = 30_000;
 const QR_EXPIRE_LIFE_MS = 2_000;
 const SLOW_MS = 5_000;
@@ -223,6 +229,12 @@ export function createFakeSend(): FakeSend {
   return {
     sent,
     async account() {
+      const [next, ...rest] = await fakeAccountChecks.getValue();
+      if (next) {
+        await fakeAccountChecks.setValue(rest);
+        if (next === 'throws') throw new Error('The fake account check failed.');
+        if (next === 'hangs') return new Promise<never>(() => {});
+      }
       return (await fakeSession.getValue())?.id ?? null;
     },
     async sendText(chat, text) {
