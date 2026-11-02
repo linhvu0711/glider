@@ -250,6 +250,38 @@ describe('popup states', () => {
     ]).toEqual([true, true, true]);
   });
 
+  test('shows an error when the send cannot start', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the account check throws
+    const { renderPopup } = await setUp({ telegram: checking(async () => {
+      throw new Error('db');
+    }) });
+    // When
+    renderPopup(EXAMPLE);
+    await advance(0);
+    // Then
+    expect([
+      screen.getByRole('heading').textContent,
+      !!screen.queryByText('Nothing was sent. Close this and try again.'),
+      screen.queryAllByRole('button').length,
+      screen.queryByText('Sending to'),
+    ]).toEqual(['Something went wrong', true, 0, null]);
+  });
+
+  test('stays empty while the check waits, then shows an error after 15 s', async () => {
+    // Given: as above; the account check never answers
+    const { renderPopup } = await setUp({ telegram: checking(() => new Promise<never>(() => {})) });
+    // When
+    const { container } = renderPopup(EXAMPLE);
+    await advance(14_999);
+    const waiting = container.textContent;
+    await advance(1);
+    // Then
+    expect([waiting, screen.queryByRole('heading')?.textContent]).toEqual([
+      '',
+      'Something went wrong',
+    ]);
+  });
+
   test('asks to set up Glider first', async () => {
     // Given: Linh Vu logged in, no chat saved
     const { openSettings, renderPopup } = await setUp({ saved: false });
@@ -350,6 +382,11 @@ function scripted(...answers: (SendError | (() => Promise<void>))[]): TelegramSe
       await answer?.();
     },
   };
+}
+
+// A Telegram send whose account check is `account`; every send goes through.
+function checking(account: TelegramSend['account']): TelegramSend {
+  return { account, sendText: async () => {} };
 }
 
 function later(ms: number): () => Promise<void> {
