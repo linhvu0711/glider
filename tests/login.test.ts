@@ -387,3 +387,32 @@ describe('phone login', () => {
     expect(login?.step === 'done' ? login.account.name : login?.step).toBe('Tuan Vu');
   });
 });
+
+describe('account', () => {
+  test('keeps the account through a session re-check', async () => {
+    // Given: Minh Anh logged in
+    await storage.setItem('local:fakeSession', MINH);
+    const { service, views } = start('default');
+    service.send({ type: 'hello' });
+    await advance(0);
+    // When: another tab says hello
+    service.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    const checking = views.filter((view) => view.login.step === 'checking').at(-1);
+    expect(checking?.account).toEqual({ id: 7101, name: 'Minh Anh', initials: 'MA' });
+  });
+
+  test('has no account after log out', async () => {
+    // Given: Minh Anh logged in
+    await storage.setItem('local:fakeSession', MINH);
+    const { service, views } = start('default');
+    service.send({ type: 'hello' });
+    await advance(0);
+    // When
+    service.send({ type: 'logOut' });
+    await advance(0);
+    // Then
+    expect(views.at(-1)?.account).toEqual(null);
+  });
+});

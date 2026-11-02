@@ -20,7 +20,12 @@ export type LoginStep =
       logout: 'idle' | 'busy' | 'offline';
     };
 
-export type LoginView = { login: LoginStep; notice: boolean };
+export type LoginView = {
+  login: LoginStep;
+  notice: boolean;
+  // The account the page works for. A session check is not a log out, so it stays through checking.
+  account: Account | null;
+};
 
 export type LoginCommand =
   | { type: 'hello'; fake?: string }

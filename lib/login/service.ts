@@ -47,14 +47,19 @@ function kindOf(e: unknown): AuthError['kind'] {
 }
 
 export function createLoginService(auth: TelegramAuth, device: string): LoginService {
-  let view: LoginView = { login: { step: 'checking' }, notice: false };
+  let view: LoginView = { login: { step: 'checking' }, notice: false, account: null };
   const listeners = new Set<(view: LoginView) => void>();
   let qr: AbortController | null = null;
 
   let checking = false;
 
-  function publish(next: LoginView) {
-    view = next;
+  function accountOf(login: LoginStep): Account | null {
+    if (login.step === 'done') return login.account;
+    return login.step === 'checking' ? view.account : null;
+  }
+
+  function publish(next: Omit<LoginView, 'account'>) {
+    view = { ...next, account: accountOf(next.login) };
     for (const listener of listeners) listener(view);
   }
 

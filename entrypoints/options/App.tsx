@@ -29,16 +29,6 @@ function useLoginView(connection: LoginConnection | undefined): LoginView | null
   return view;
 }
 
-// The account step 2 works for. A session check (another tab's hello) is not a log out,
-// so the account stays through `checking`.
-function useChatAccount(login: LoginStep | undefined): Account | null {
-  const [account, setAccount] = useState<Account | null>(null);
-  const next =
-    login?.step === 'done' ? login.account : login?.step === 'checking' ? account : null;
-  if (next !== account) setAccount(next);
-  return next;
-}
-
 export default function App({
   connection,
   chats,
@@ -47,7 +37,7 @@ export default function App({
   chats?: TelegramChats;
 }) {
   const view = useLoginView(connection);
-  const chatAccount = useChatAccount(view?.login);
+  const chatAccount = view?.account ?? null;
   return (
     <div className="page">
       <header className="header">
