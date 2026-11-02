@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { serveChats } from '../lib/chats/connection';
+import { chatsGroup } from '../lib/chats/connection';
 import { deviceLabel, deviceName } from '../lib/device';
 import { servePort } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
@@ -43,10 +43,9 @@ export default defineBackground({
 
     // Set with each login service, so the chat list follows the same fake scenario.
     let chats: TelegramChats | null = null;
-    serveChats(() => chats);
 
     const sender = createSendService(fake ? createFakeSend() : createMtcuteSend(client));
-    serve([served(sendGroup, sender)]);
+    serve([served(sendGroup, sender), served(chatsGroup, () => chats)]);
     void sender.start();
 
     const host = createHost(async (scenarioName) => {
