@@ -94,6 +94,16 @@ describe('header', () => {
       ),
     ).toBeTruthy();
   });
+  test('has no theme control', () => {
+    // Given: <App /> rendered with no connection yet
+    // When
+    render(<App />);
+    // Then
+    expect({
+      text: screen.queryByText(/theme|appearance|dark mode|light mode/i),
+      radios: screen.queryAllByRole('radio'),
+    }).toEqual({ text: null, radios: [] });
+  });
 });
 
 describe('QR login', () => {
