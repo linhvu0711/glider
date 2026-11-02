@@ -4,7 +4,7 @@ import { AlertIcon, GearIcon, GlobeIcon, UndoIcon } from '../../components/icons
 import { ShortcutKeys } from '../../components/shortcut-keys';
 import type { SendConnection } from '../../lib/send/connection';
 import { SEND_LIMIT, sendList, UNDO_MS } from '../../lib/send/service';
-import type { Link, Opened } from '../../lib/send/state';
+import { addressOf, type Link, type Opened } from '../../lib/send/state';
 import type { TelegramChats } from '../../lib/telegram/chats';
 
 // The send service writes the links; the popup only shows them.
@@ -49,23 +49,20 @@ function useNow(): number {
   return now;
 }
 
-/** The address as the mockup shows it: no protocol, no `www.`, no lone `/`. */
-export function addressOf(url: string): string {
-  const { host, pathname, search } = new URL(url);
-  return host.replace(/^www\./, '') + (pathname === '/' ? '' : pathname) + search;
-}
-
 export default function Popup({
   sender,
   opened,
   chats,
   openSettings,
+  openChatSettings,
   close,
 }: {
   sender: SendConnection;
   opened: Promise<Opened>;
   chats: TelegramChats;
   openSettings: () => void;
+  /** Opens the settings page at step 2, to pick another chat. */
+  openChatSettings: () => void;
   close: () => void;
 }) {
   const result = useOpened(opened);
@@ -132,6 +129,9 @@ export default function Popup({
               now={now}
               focus={link.id === focus}
               onUndo={() => void sender.undo(link.id)}
+              onRetry={() => void sender.retry(link.id)}
+              onLogIn={() => openSettings()}
+              onPickChat={() => openChatSettings()}
               onRemove={() => void sender.remove(link.id)}
             />
           ))}
@@ -158,17 +158,58 @@ function Note({ title, text }: { title?: string; text: string }) {
   );
 }
 
+function reasonOf(link: Link & { status: 'failed' }): string {
+  switch (link.failure.reason) {
+    case 'offline':
+      return 'Not sent: no internet';
+    case 'logged-out':
+      return 'Not sent: you were logged out';
+    case 'unreachable':
+      return `Not sent: can't reach ${link.chat.name}`;
+    case 'wait':
+      return 'Not sent: Telegram asks to wait';
+    case 'other':
+      return 'Not sent: something went wrong';
+    case 'closed':
+      return 'Not sent: Chrome closed first';
+  }
+}
+
+function RetryButton({
+  link,
+  now,
+  onRetry,
+}: {
+  link: Link & { status: 'failed' };
+  now: number;
+  onRetry: () => void;
+}) {
+  const wait =
+    link.failure.reason === 'wait' ? Math.ceil((link.failure.retryAt - now) / 1000) : 0;
+  return (
+    <button type="button" className="button row-button" disabled={wait > 0} onClick={onRetry}>
+      {wait > 0 ? `Retry in ${wait} s` : 'Retry'}
+    </button>
+  );
+}
+
 function Row({
   link,
   now,
   focus,
   onUndo,
+  onRetry,
+  onLogIn,
+  onPickChat,
   onRemove,
 }: {
   link: Link;
   now: number;
   focus: boolean;
   onUndo: () => void;
+  onRetry: () => void;
+  onLogIn: () => void;
+  onPickChat: () => void;
   onRemove: () => void;
 }) {
   // Set once, so the bar keeps draining from where the send left it, also after the popup opens again.
@@ -196,7 +237,30 @@ function Row({
         {link.status === 'undone' && (
           <span className="row-state muted">Undone. Nothing was sent.</span>
         )}
-        {link.status === 'failed' && <span className="row-state row-state-red">Not sent</span>}
+        {link.status === 'failed' && (
+          <span className="row-state row-state-red row-reason">
+            <AlertIcon width={14} height={14} />
+            <span>{reasonOf(link)}</span>
+          </span>
+        )}
+        {link.status === 'failed' && (
+          <span className="row-actions">
+            <RetryButton link={link} now={now} onRetry={onRetry} />
+            {link.failure.reason === 'logged-out' && (
+              <button type="button" className="button-plain row-button" onClick={onLogIn}>
+                Log in again
+              </button>
+            )}
+            {link.failure.reason === 'unreachable' && (
+              <button type="button" className="button-plain row-button" onClick={onPickChat}>
+                Pick another chat
+              </button>
+            )}
+            <button type="button" className="row-quiet" onClick={onRemove}>
+              Remove
+            </button>
+          </span>
+        )}
       </span>
       {waiting && (
         <button
@@ -207,11 +271,6 @@ function Row({
         >
           <UndoIcon width={14} height={14} />
           <span>Undo</span>
-        </button>
-      )}
-      {link.status === 'failed' && (
-        <button type="button" className="button-plain undo" onClick={onRemove}>
-          Remove
         </button>
       )}
       {waiting && (

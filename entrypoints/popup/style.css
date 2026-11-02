@@ -126,6 +126,35 @@ body {
   padding: 0 12px;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.row-button {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.row-quiet {
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.row-quiet:hover {
+  color: var(--text);
+}
+
 .undo:focus-visible,
 .undo:focus {
   outline: 2px solid var(--accent);
@@ -174,6 +203,12 @@ body {
 
 .row-state-red {
   color: var(--red);
+}
+
+.row-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .note {

@@ -1,13 +1,27 @@
 import { browser } from 'wxt/browser';
 import { storage } from 'wxt/utils/storage';
 import { targetChat, targetChatFor } from '../target-chat';
-import type { TelegramSend } from '../telegram/send';
-import { isWebPage, type Link, type LinkId, type LinkStatus, type Opened, type Page, type Sends } from './state';
+import { SendError, type TelegramSend } from '../telegram/send';
+import {
+  addressOf,
+  isWebPage,
+  type Link,
+  type LinkFailure,
+  type LinkId,
+  type Opened,
+  type Page,
+  type Sends,
+} from './state';
 
-// The send service is the only writer of this item. The popup reads and watches it.
-export const sendList = storage.defineItem<Sends>('session:links', {
+// Local, so the links outlive a Chrome restart. The send service is the only writer of
+// this item; the popup reads and watches it.
+export const sendList = storage.defineItem<Sends>('local:links', {
   fallback: { links: [], times: [] },
 });
+
+// Chrome empties session storage when it closes, so false at start means Chrome started
+// again, not a worker waking up. The send service is its only writer.
+const browserOpen = storage.defineItem<boolean>('session:browserOpen', { fallback: false });
 
 export const UNDO_MS = 5_000;
 // How long a sent link stays in the popup.
@@ -18,13 +32,41 @@ const LIMIT_MS = 60_000;
 const CHECK_MS = 2_000;
 const BLUE = '#2563eb';
 const GREEN = '#16a34a';
+const RED = '#dc2626';
 
 // One answer per state, so one send never shows two badges.
 function badgeFor(links: Link[], sentAt: number | null, now: number) {
   const waiting = links.filter((l) => l.status === 'waiting' || l.status === 'sending').length;
   if (waiting > 0) return { text: String(waiting), color: BLUE };
   if (sentAt !== null && now - sentAt < CHECK_MS) return { text: '✓', color: GREEN };
+  // The count and the check pass on their own; the ! waits for the user.
+  if (links.some((l) => l.status === 'failed')) return { text: '!', color: RED };
   return { text: '', color: BLUE };
+}
+
+function failureOf(e: unknown, now: number): LinkFailure {
+  if (!(e instanceof SendError)) return { reason: 'other' };
+  const { failure } = e;
+  return failure.reason === 'wait'
+    ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
+    : { reason: failure.reason };
+}
+
+function noticeOf(chat: string, failure: LinkFailure, now: number): string {
+  switch (failure.reason) {
+    case 'offline':
+      return 'Not sent: no internet.';
+    case 'logged-out':
+      return 'Not sent: you were logged out.';
+    case 'unreachable':
+      return `Can't send to ${chat}. It may be deleted, stopped, or blocked.`;
+    case 'wait':
+      return `Telegram asks to wait ${Math.ceil((failure.retryAt - now) / 1000)} s.`;
+    case 'other':
+      return 'Not sent: something went wrong.';
+    case 'closed':
+      return 'Not sent: Chrome closed first.';
+  }
 }
 
 export interface SendService {
@@ -33,6 +75,8 @@ export interface SendService {
   /** `page` is null when the tab has no address the extension may read. */
   open(page: Page | null): Promise<Opened>;
   undo(id: LinkId): Promise<void>;
+  /** Sends a failed link at once, with no undo window. */
+  retry(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
 }
 
@@ -65,10 +109,30 @@ export function createSendService(telegram: TelegramSend): SendService {
     await showBadge();
   }
 
-  function setStatus(id: LinkId, status: LinkStatus) {
+  function setStatus(id: LinkId, status: 'waiting' | 'sending' | 'sent' | 'undone') {
     return write({
       ...state,
-      links: state.links.map((link) => (link.id === id ? { ...link, status } : link)),
+      links: state.links.map((link): Link => (link.id === id ? { ...link, status } : link)),
+    });
+  }
+
+  // The only place a link turns failed. The banner's id is the link's, so a new failure
+  // of the same link replaces its banner.
+  async function fail(id: LinkId, failure: LinkFailure) {
+    await write({
+      ...state,
+      links: state.links.map((link): Link =>
+        link.id === id ? { ...link, status: 'failed', failure } : link,
+      ),
+    });
+    const link = state.links.find((l) => l.id === id);
+    if (!link) return;
+    await browser.notifications.create(id, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('/icons/128.png'),
+      title: 'Glider',
+      message: noticeOf(link.chat.name, failure, Date.now()),
+      contextMessage: addressOf(link.page.url),
     });
   }
 
@@ -95,23 +159,27 @@ export function createSendService(telegram: TelegramSend): SendService {
       if (!found) return undefined;
       // A log out while it waited means the link is not sent (the log out dialog says so).
       if ((await telegram.account()) !== found.account) {
-        await setStatus(id, 'failed');
+        await fail(id, { reason: 'logged-out' });
         return undefined;
       }
       await setStatus(id, 'sending');
       return found;
     });
-    if (!link) return;
-    const sent = await telegram.sendText(link.chat.id, link.page.url).then(
-      () => true,
-      () => false,
+    if (link) await deliver(link);
+  }
+
+  async function deliver(link: Link) {
+    const failure = await telegram.sendText(link.chat.id, link.page.url, link.id).then(
+      () => null,
+      (e: unknown) => failureOf(e, Date.now()),
     );
     await serial(() => {
-      if (sent) sentAt = Date.now();
-      return setStatus(id, sent ? 'sent' : 'failed');
+      if (failure) return fail(link.id, failure);
+      sentAt = Date.now();
+      return setStatus(link.id, 'sent');
     });
-    if (!sent) return;
-    dropLater(id);
+    if (failure) return;
+    dropLater(link.id);
     setTimeout(() => void serial(showBadge), CHECK_MS);
   }
 
@@ -119,12 +187,21 @@ export function createSendService(telegram: TelegramSend): SendService {
     start() {
       return serial(async () => {
         const saved = await sendList.getValue();
-        // A link that was in flight when the worker stopped may have gone: never send it twice.
-        const links = saved.links
-          .filter((link) => link.status !== 'sent' && link.status !== 'undone')
-          .map((link): Link => (link.status === 'sending' ? { ...link, status: 'failed' } : link));
+        const links = saved.links.filter(
+          (link) => link.status !== 'sent' && link.status !== 'undone',
+        );
         await write({ ...saved, links });
-        for (const link of links) if (link.status === 'waiting') schedule(link);
+        const restarted = !(await browserOpen.getValue());
+        for (const link of links) {
+          // A link that was in flight when the worker stopped may have gone: never send it twice.
+          // A failed link never sends by itself, so one Chrome closed on does not either.
+          if (link.status === 'sending' || (link.status === 'waiting' && restarted)) {
+            await fail(link.id, { reason: 'closed' });
+          } else if (link.status === 'waiting') {
+            schedule(link);
+          }
+        }
+        await browserOpen.setValue(true);
       });
     },
 
@@ -168,9 +245,28 @@ export function createSendService(telegram: TelegramSend): SendService {
       });
     },
 
+    async retry(id) {
+      const link = await serial(async () => {
+        const found = state.links.find((l) => l.id === id);
+        if (found?.status !== 'failed') return undefined;
+        if (found.failure.reason === 'wait' && Date.now() < found.failure.retryAt) return undefined;
+        if ((await telegram.account()) !== found.account) {
+          await fail(id, { reason: 'logged-out' });
+          return undefined;
+        }
+        await setStatus(id, 'sending');
+        await browser.notifications.clear(id);
+        return found;
+      });
+      // The popup's ask ends at Sending…; the row shows the rest.
+      if (link) void deliver(link);
+    },
+
     remove(id) {
       return serial(async () => {
-        if (state.links.some((link) => link.id === id && link.status === 'failed')) await drop(id);
+        if (!state.links.some((link) => link.id === id && link.status === 'failed')) return;
+        await drop(id);
+        await browser.notifications.clear(id);
       });
     },
   };

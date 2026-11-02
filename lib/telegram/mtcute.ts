@@ -1,7 +1,15 @@
-import { Chat as TgChat, TelegramClient, tl, User } from '@mtcute/web';
+import {
+  Long,
+  MtArgumentError,
+  MtPeerNotFoundError,
+  Chat as TgChat,
+  TelegramClient,
+  tl,
+  User,
+} from '@mtcute/web';
 import { AuthError, type Account, type TelegramAuth } from './auth';
 import type { Chat, ChatId, TelegramChats } from './chats';
-import type { TelegramSend } from './send';
+import { SendError, type TelegramSend } from './send';
 
 const TIMEOUT_MS = 15_000;
 const DATABASE = 'glider';
@@ -26,6 +34,8 @@ export function mtcuteClientOptions(
 
 const SESSION_ENDED = [
   'AUTH_KEY_UNREGISTERED',
+  'AUTH_KEY_INVALID',
+  'AUTH_KEY_DUPLICATED',
   'SESSION_REVOKED',
   'SESSION_EXPIRED',
   'USER_DEACTIVATED',
@@ -44,6 +54,59 @@ export function toAuthError(e: unknown): AuthError {
     return new AuthError('session-ended');
   }
   return new AuthError('offline');
+}
+
+// The chat is gone, blocks the user, or does not let them post.
+const CANT_REACH = [
+  'PEER_ID_INVALID',
+  'CHAT_WRITE_FORBIDDEN',
+  'CHAT_SEND_PLAIN_FORBIDDEN',
+  'CHAT_RESTRICTED',
+  'CHAT_ADMIN_REQUIRED',
+  'CHAT_GUEST_SEND_FORBIDDEN',
+  'USER_IS_BLOCKED',
+  'YOU_BLOCKED_USER',
+  'USER_BANNED_IN_CHANNEL',
+  'USER_PRIVACY_RESTRICTED',
+  'PRIVACY_PREMIUM_REQUIRED',
+  'INPUT_USER_DEACTIVATED',
+  'CHANNEL_PRIVATE',
+  'CHANNEL_INVALID',
+  'CHAT_ID_INVALID',
+  'USER_ID_INVALID',
+];
+
+export function toSendError(e: unknown): SendError {
+  if (e instanceof SendError) return e;
+  // mtcute sleeps through waits of up to 10 s itself; longer ones reach here.
+  if (
+    tl.RpcError.is(e, 'FLOOD_WAIT_%d') ||
+    tl.RpcError.is(e, 'SLOWMODE_WAIT_%d') ||
+    tl.RpcError.is(e, 'FLOOD_PREMIUM_WAIT_%d')
+  ) {
+    return new SendError({ reason: 'wait', seconds: e.seconds });
+  }
+  // start() throws MtArgumentError when the saved session has ended.
+  if (e instanceof MtArgumentError || SESSION_ENDED.some((text) => tl.RpcError.is(e, text))) {
+    return new SendError({ reason: 'logged-out' });
+  }
+  if (e instanceof MtPeerNotFoundError || CANT_REACH.some((text) => tl.RpcError.is(e, text))) {
+    return new SendError({ reason: 'unreachable' });
+  }
+  return new SendError({ reason: 'other' });
+}
+
+// Rejects with the signal's reason when it aborts first.
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    promise.then(resolve, reject);
+  });
+}
+
+// The same link id gives the same random id, so Telegram turns down a Retry of a message it has.
+function randomIdOf(key: string): Long {
+  return Long.fromString(key.replace(/-/g, '').slice(0, 16), false, 16);
 }
 
 const LAST_SEEN: Record<string, string> = {
@@ -328,11 +391,25 @@ export function createMtcuteSend(client: MtcuteClient): TelegramSend {
       await t.prepare();
       return (await t.storage.self.fetch())?.userId ?? null;
     },
-    async sendText(chat, text) {
-      const t = client.get();
-      // The spike sent only after start had loaded the user (issue #5, Known).
-      await t.start({});
-      await t.sendText(chat, text);
+    async sendText(chat, text, key) {
+      if (!navigator.onLine) throw new SendError({ reason: 'offline' });
+      // With no network, mtcute waits for it forever; no answer in time means no internet.
+      const limit = new AbortController();
+      const timer = setTimeout(
+        () => limit.abort(new SendError({ reason: 'offline' })),
+        TIMEOUT_MS,
+      );
+      try {
+        const t = client.get();
+        // The spike sent only after start had loaded the user (issue #5, Known).
+        await untilAborted(t.start({}), limit.signal);
+        await t.sendText(chat, text, { randomId: randomIdOf(key), abortSignal: limit.signal });
+      } catch (e) {
+        if (tl.RpcError.is(e, 'RANDOM_ID_DUPLICATE')) return;
+        throw toSendError(e);
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }

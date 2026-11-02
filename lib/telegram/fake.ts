@@ -1,7 +1,7 @@
 import { storage } from 'wxt/utils/storage';
 import { AuthError, type Account, type QrCode, type TelegramAuth } from './auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from './chats';
-import type { TelegramSend } from './send';
+import { SendError, type SendFailure, type TelegramSend } from './send';
 
 export type FakeScenario =
   | 'default'
@@ -196,15 +196,34 @@ export function createFakeChats({ scenario }: { scenario: FakeScenario }): Teleg
 
 export type FakeSend = TelegramSend & { sent: { chat: ChatId; text: string }[] };
 
+// A page whose address ends `#fail=<reason>` fails its first send, so tests and the
+// fake build can show each failure; `wait-<n>` asks to wait n seconds.
+function fakeFailure(text: string): SendFailure | null {
+  const match = /#fail=([a-z-]+?)(?:-(\d+))?$/.exec(text);
+  if (!match) return null;
+  const [, reason, seconds] = match;
+  if (reason === 'wait' && seconds) return { reason: 'wait', seconds: Number(seconds) };
+  if (reason === 'offline' || reason === 'logged-out' || reason === 'unreachable' || reason === 'other') {
+    return { reason };
+  }
+  return null;
+}
+
 // The fake build's sends go nowhere; `sent` lets a test see them.
 export function createFakeSend(): FakeSend {
   const sent: { chat: ChatId; text: string }[] = [];
+  const failed = new Set<string>();
   return {
     sent,
     async account() {
       return (await fakeSession.getValue())?.id ?? null;
     },
     async sendText(chat, text) {
+      const failure = failed.has(text) ? null : fakeFailure(text);
+      if (failure) {
+        failed.add(text);
+        throw new SendError(failure);
+      }
       sent.push({ chat, text });
     },
   };

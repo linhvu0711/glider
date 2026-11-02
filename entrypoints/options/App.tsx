@@ -598,6 +598,11 @@ function useTargetChat(account: Account | null): Chat | null | undefined {
 function TargetCard({ account, chats }: { account: Account | null; chats: TelegramChats }) {
   const loggedIn = account !== null;
   const { list, retry } = useChatList(loggedIn, chats);
+  const card = useRef<HTMLElement>(null);
+  // The popup's Pick another chat opens this page at #chat.
+  useEffect(() => {
+    if (location.hash === '#chat') card.current?.scrollIntoView({ block: 'start' });
+  }, []);
   const saved = useTargetChat(account);
   const [picked, setPicked] = useState<ChatId | null>(null);
   // The saved chat moves to the top once per load, never under the pointer at Save.
@@ -643,6 +648,7 @@ function TargetCard({ account, chats }: { account: Account | null; chats: Telegr
 
   return (
     <section
+      ref={card}
       className={loggedIn ? 'card' : 'card card-off'}
       aria-labelledby="step-2-title"
       aria-disabled={loggedIn ? undefined : 'true'}

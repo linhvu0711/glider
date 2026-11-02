@@ -510,25 +510,6 @@
   margin-top: 16px;
 }
 
-/* Fonts keep different space under the baseline (Linux's Nimbus Sans keeps a lot), so a
-   centered line box put the letters 3 px high there. Trimming each line to cap height and
-   baseline centers the letters themselves, in any font. */
-.header-title,
-.header-sub,
-.header-account > span,
-.badge > span,
-.card-title,
-.chip-done > span,
-.account-text,
-.banner-text,
-.banner .link,
-.offline-text,
-.chat-name,
-.chat-tag,
-.list-title {
-  text-box: trim-both cap alphabetic;
-}
-
 .shortcut-row {
   display: flex;
   align-items: center;

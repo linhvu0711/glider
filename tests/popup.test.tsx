@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { storage } from 'wxt/utils/storage';
@@ -6,7 +6,8 @@ import Popup from '../entrypoints/popup/Popup';
 import { answerSend, connectSend } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import type { Page } from '../lib/send/state';
-import { createFakeChats, createFakeSend, FAKE_CHATS, LINH } from '../lib/telegram/fake';
+import { createFakeChats, createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
+import { SendError, type TelegramSend } from '../lib/telegram/send';
 
 const READ_LATER = FAKE_CHATS.find((chat) => chat.name === 'Read Later Bot')!;
 const EXAMPLE: Page = { url: 'https://example.com/', title: 'Example Domain', icon: null };
@@ -29,14 +30,17 @@ function setupUser() {
   return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 }
 
-async function setUp({ saved = true }: { saved?: boolean } = {}) {
+async function setUp({
+  saved = true,
+  telegram = createFakeSend(),
+}: { saved?: boolean; telegram?: FakeSend | TelegramSend } = {}) {
   await storage.setItem('local:fakeSession', LINH);
   if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
-  const telegram = createFakeSend();
   const service = createSendService(telegram);
   await service.start();
   const sender = connectSend((request) => answerSend(service)(request)!);
   const openSettings = vi.fn();
+  const openChatSettings = vi.fn();
   const close = vi.fn();
   // Each call is one popup open: it sends the page once, as entrypoints/popup/main.tsx does.
   function renderPopup(page: Page | null) {
@@ -46,11 +50,19 @@ async function setUp({ saved = true }: { saved?: boolean } = {}) {
         opened={sender.open(page)}
         chats={createFakeChats({ scenario: 'default' })}
         openSettings={openSettings}
+        openChatSettings={openChatSettings}
         close={close}
       />,
     );
   }
-  return { telegram, sender, openSettings, close, renderPopup };
+  return {
+    telegram: telegram as FakeSend,
+    sender,
+    openSettings,
+    openChatSettings,
+    close,
+    renderPopup,
+  };
 }
 
 function rowOf(address: string) {
@@ -249,20 +261,256 @@ describe('popup states', () => {
       openSettings.mock.calls.length,
     ]).toEqual([true, null, 1]);
   });
+});
 
-  test('shows Not sent with Remove', async () => {
-    // Given: Linh Vu logged in, Read Later Bot saved
+// The fake fails a page whose address ends `#fail=<reason>` on its first send.
+function failing(reason: string): Page {
+  return { url: `https://example.com/#fail=${reason}`, title: 'Example Domain', icon: null };
+}
+
+describe('failed rows', () => {
+  test('says no internet on a failed row', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved, fake timers at 2026-11-01T10:00:00Z
     const { renderPopup } = await setUp();
-    const user = setupUser();
-    // When: the account logs out while the link waits
+    // When
+    renderPopup(failing('offline'));
+    await advance(5_000);
+    // Then
+    expect([!!screen.queryByText('Not sent: no internet'), screen.queryByText('Not sent')]).toEqual([
+      true,
+      null,
+    ]);
+  });
+
+  test('says you were logged out', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('logged-out'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: you were logged out')).toBe(true);
+  });
+
+  test('says you were logged out when the account left while it waited', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
     renderPopup(EXAMPLE);
     await advance(2_000);
     await storage.setItem('local:fakeSession', null);
     await advance(3_000);
-    const failed = !!screen.queryByText('Not sent');
+    // Then
+    expect(!!screen.queryByText('Not sent: you were logged out')).toBe(true);
+  });
+
+  test("says it can't reach the chat", async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('unreachable'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText("Not sent: can't reach Read Later Bot")).toBe(true);
+  });
+
+  test('says Telegram asks to wait', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('wait-30'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: Telegram asks to wait')).toBe(true);
+  });
+
+  test('says something went wrong', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('other'));
+    await advance(5_000);
+    // Then
+    expect(!!screen.queryByText('Not sent: something went wrong')).toBe(true);
+  });
+});
+
+// A Telegram send that answers each call with the next entry: an error is thrown,
+// a function is called and awaited.
+function scripted(...answers: (SendError | (() => Promise<void>))[]): TelegramSend {
+  return {
+    account: async () => LINH.id,
+    sendText: async () => {
+      const answer = answers.shift();
+      if (answer instanceof SendError) throw answer;
+      await answer?.();
+    },
+  };
+}
+
+function later(ms: number): () => Promise<void> {
+  return () => new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+describe('failed row actions', () => {
+  test('shows Retry and Remove on a failed row', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('offline'));
+    await advance(5_000);
+    // Then
+    const retry = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement;
+    expect([
+      retry.className,
+      retry.disabled,
+      !!screen.queryByRole('button', { name: 'Remove' }),
+    ]).toEqual(['button row-button', false, true]);
+  });
+
+  test('Log in again opens the settings page', async () => {
+    // Given: as above
+    const { renderPopup, openSettings, openChatSettings } = await setUp();
+    const user = setupUser();
+    // When
+    renderPopup(failing('logged-out'));
+    await advance(5_000);
+    await user.click(screen.getByRole('button', { name: 'Log in again' }));
+    // Then
+    expect([openSettings.mock.calls.length, openChatSettings.mock.calls.length]).toEqual([1, 0]);
+  });
+
+  test('Pick another chat opens settings at step 2', async () => {
+    // Given: as above
+    const { renderPopup, openSettings, openChatSettings } = await setUp();
+    const user = setupUser();
+    // When
+    renderPopup(failing('unreachable'));
+    await advance(5_000);
+    await user.click(screen.getByRole('button', { name: 'Pick another chat' }));
+    // Then
+    expect([openSettings.mock.calls.length, openChatSettings.mock.calls.length]).toEqual([0, 1]);
+  });
+
+  test('counts down on the Retry button', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(failing('wait-30'));
+    const read = () => {
+      const button = within(rowOf('example.com')).getAllByRole('button')[0] as HTMLButtonElement;
+      return [button.textContent, button.disabled];
+    };
+    await advance(5_000);
+    const first = read();
+    await advance(10_000);
+    const second = read();
+    await advance(20_000);
+    // Then
+    expect([first, second, read()]).toEqual([
+      ['Retry in 30 s', true],
+      ['Retry in 20 s', true],
+      ['Retry', false],
+    ]);
+  });
+
+  test('Retry shows Sending…, then Sent to the chat', async () => {
+    // Given: a send that fails, then one that takes 1 s
+    const { renderPopup } = await setUp({
+      telegram: scripted(new SendError({ reason: 'offline' }), later(1_000)),
+    });
+    const user = setupUser();
+    // When
+    renderPopup(EXAMPLE);
+    await advance(5_000);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await advance(0);
+    const read = () => [
+      !!screen.queryByText('Sending…'),
+      !!screen.queryByText('Sent to Read Later Bot'),
+    ];
+    const during = read();
+    await advance(1_000);
+    // Then
+    expect([during, read()]).toEqual([
+      [true, false],
+      [false, true],
+    ]);
+  });
+
+  test('Retry that fails again shows the reason again', async () => {
+    // Given: a send that always fails with no internet
+    const { renderPopup } = await setUp({
+      telegram: scripted(new SendError({ reason: 'offline' }), new SendError({ reason: 'offline' })),
+    });
+    const user = setupUser();
+    // When
+    renderPopup(EXAMPLE);
+    await advance(5_000);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await advance(0);
+    // Then
+    expect([
+      !!screen.queryByText('Not sent: no internet'),
+      !!screen.queryByText('Sent to Read Later Bot'),
+    ]).toEqual([true, false]);
+  });
+
+  test('Remove takes the row away and sends nothing', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved
+    const { renderPopup, telegram } = await setUp();
+    const user = setupUser();
+    // When
+    renderPopup(failing('offline'));
+    await advance(5_000);
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     await advance(0);
     // Then
-    expect([failed, !!screen.queryByText('Nothing waiting')]).toEqual([true, true]);
+    expect([!!screen.queryByText('Nothing waiting'), telegram.sent]).toEqual([true, []]);
+  });
+
+  test('a failed row stays after the popup closes', async () => {
+    // Given: as above
+    const { renderPopup } = await setUp();
+    // When
+    const { unmount } = renderPopup(failing('offline'));
+    await advance(5_000);
+    unmount();
+    await advance(60_000);
+    renderPopup(null);
+    await advance(0);
+    // Then
+    expect([
+      !!screen.queryByText('Nothing to send here'),
+      !!screen.queryByText('Not sent: no internet'),
+    ]).toEqual([true, true]);
+  });
+});
+
+describe('after a restart', () => {
+  test('says Chrome closed first after a restart', async () => {
+    // Given: a waiting link saved before Chrome closed; session storage is empty
+    await storage.setItem('local:links', {
+      links: [
+        {
+          id: 'a',
+          page: EXAMPLE,
+          account: LINH.id,
+          chat: READ_LATER,
+          sendAt: Date.parse('2026-11-01T10:00:03Z'),
+          status: 'waiting',
+        },
+      ],
+      times: [],
+    });
+    const { renderPopup } = await setUp();
+    // When
+    renderPopup(null);
+    await advance(0);
+    // Then
+    expect([
+      !!screen.queryByText('Not sent: Chrome closed first'),
+      !!screen.queryByRole('button', { name: 'Retry' }),
+    ]).toEqual([true, true]);
   });
 });

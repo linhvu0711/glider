@@ -1108,3 +1108,27 @@ describe('send faster', () => {
     );
   });
 });
+
+describe('open at a step', () => {
+  const scrollIntoView = HTMLElement.prototype.scrollIntoView;
+  afterEach(() => {
+    window.location.hash = '';
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  test('opens at step 2 when the address ends in #chat', async () => {
+    // Given: the page opened at #chat, saved session Minh Anh
+    window.location.hash = '#chat';
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    await storage.setItem('local:fakeSession', MINH);
+    // When
+    renderSettings('default');
+    await advance(0);
+    // Then
+    expect([scroll.mock.calls.length > 0, scroll.mock.contexts.at(-1) === stepTwo()]).toEqual([
+      true,
+      true,
+    ]);
+  });
+});
