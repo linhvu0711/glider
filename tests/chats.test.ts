@@ -1,14 +1,16 @@
 import { describe, expect, test } from 'vitest';
-import { answerChats, connectChats } from '../lib/chats/connection';
+import { chatsGroup, connectChats } from '../lib/chats/connection';
+import { memoryPath, served } from '../lib/messages';
 import type { ChatId } from '../lib/telegram/chats';
 import { createFakeChats, FAKE_PHOTO } from '../lib/telegram/fake';
 
 describe('chat list messages', () => {
   test('lists chats through the service worker', async () => {
     // Given: a worker that holds the default fake chat list
-    const answer = answerChats(() => createFakeChats({ scenario: 'default' }));
+    const fakeChats = createFakeChats({ scenario: 'default' });
+    const path = memoryPath([served(chatsGroup, () => fakeChats)]);
     // When
-    const chats = await connectChats((request) => answer(request)!).list();
+    const chats = await connectChats(path).list();
     // Then
     expect(chats.map((chat) => chat.name)).toEqual([
       'Saved Messages',
@@ -23,18 +25,19 @@ describe('chat list messages', () => {
 
   test('gives a chat photo through the service worker', async () => {
     // Given: as above
-    const answer = answerChats(() => createFakeChats({ scenario: 'default' }));
+    const fakeChats = createFakeChats({ scenario: 'default' });
+    const path = memoryPath([served(chatsGroup, () => fakeChats)]);
     // When
-    const photo = await connectChats((request) => answer(request)!).photo(7005 as ChatId);
+    const photo = await connectChats(path).photo(7005 as ChatId);
     // Then
     expect(photo).toBe(FAKE_PHOTO);
   });
 
   test('fails when the service worker has no chat list', async () => {
     // Given: a worker that has not loaded Telegram yet
-    const answer = answerChats(() => null);
+    const path = memoryPath([served(chatsGroup, () => null)]);
     // When
-    const list = connectChats((request) => answer(request)!).list();
+    const list = connectChats(path).list();
     // Then
     await expect(list).rejects.toThrow('chats');
   });

@@ -34,12 +34,6 @@ export type Opened =
   | { kind: 'limit'; chat: Chat; seconds: number }
   | { kind: 'not-web'; chat: Chat };
 
-export type SendRequest =
-  | { type: 'send.open'; page: Page | null }
-  | { type: 'send.undo'; id: LinkId }
-  | { type: 'send.retry'; id: LinkId }
-  | { type: 'send.remove'; id: LinkId };
-
 /** Only http and https pages can be sent; New Tab, `chrome://` and `file://` cannot. */
 export function isWebPage(url: string): boolean {
   try {

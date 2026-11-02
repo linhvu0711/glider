@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
+import { chatsGroup, connectChats } from '../lib/chats/connection';
 import { connectInMemory } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
 import type { LoginView } from '../lib/login/state';
+import { memoryPath, served } from '../lib/messages';
 import {
   createFakeAuth,
   createFakeChats,
@@ -738,8 +740,12 @@ describe('two tabs', () => {
 
 function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElement }) {
   const service = createLoginService(createFakeAuth({ scenario }), 'Chromium on Linux');
+  const fakeChats = createFakeChats({ scenario });
   return render(
-    <App connection={connectInMemory(service)} chats={createFakeChats({ scenario })} />,
+    <App
+      connection={connectInMemory(service)}
+      chats={connectChats(memoryPath([served(chatsGroup, () => fakeChats)]))}
+    />,
     options?.container ? { container: options.container } : undefined,
   );
 }
@@ -1070,7 +1076,8 @@ describe('choose the chat: save', () => {
     const user = setupUser();
     const auth = createFakeAuth({ scenario: 'default' });
     const service = createLoginService(auth, 'Chromium on Linux');
-    const chats = createFakeChats({ scenario: 'default' });
+    const fakeChats = createFakeChats({ scenario: 'default' });
+    const chats = connectChats(memoryPath([served(chatsGroup, () => fakeChats)]));
     const firstTab = document.body.appendChild(document.createElement('div'));
     const secondTab = document.body.appendChild(document.createElement('div'));
     render(<App connection={connectInMemory(service)} chats={chats} />, { container: firstTab });

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
-import { answerSend, connectSend } from '../lib/send/connection';
+import { memoryPath, served } from '../lib/messages';
+import { connectSend, sendGroup } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import type { Page, Sends } from '../lib/send/state';
 import type { Account } from '../lib/telegram/auth';
@@ -33,7 +34,7 @@ async function setUp({
   if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
   const service = createSendService(telegram);
   await service.start();
-  const sender = connectSend((request) => answerSend(service)(request)!);
+  const sender = connectSend(memoryPath([served(sendGroup, service)]));
   return { telegram: telegram as FakeSend, service, sender };
 }
 

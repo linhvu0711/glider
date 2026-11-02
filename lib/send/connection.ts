@@ -1,73 +1,17 @@
-import { browser } from 'wxt/browser';
+import { connect, defineGroup, runtimePath, type Client, type MessagePath } from '../messages';
 import type { SendService } from './service';
-import type { LinkId, Opened, Page, SendRequest } from './state';
+import type { LinkId, Page } from './state';
 
-export type SendReply = Opened | { ok: true };
+export const sendGroup = defineGroup('send', {
+  open: (service: SendService, page: Page | null) => service.open(page),
+  undo: (service: SendService, id: LinkId) => service.undo(id),
+  retry: (service: SendService, id: LinkId) => service.retry(id),
+  remove: (service: SendService, id: LinkId) => service.remove(id),
+});
 
-function isSendRequest(message: unknown): message is SendRequest {
-  if (typeof message !== 'object' || message === null || !('type' in message)) return false;
-  switch (message.type) {
-    case 'send.open':
-      return 'page' in message && typeof message.page === 'object';
-    case 'send.undo':
-    case 'send.retry':
-    case 'send.remove':
-      return 'id' in message && typeof message.id === 'string';
-    default:
-      return false;
-  }
-}
-
-/** The worker's side; undefined for a message that is not a send ask. */
-export function answerSend(service: SendService): (message: unknown) => Promise<SendReply> | undefined {
-  return (message) => {
-    if (!isSendRequest(message)) return undefined;
-    switch (message.type) {
-      case 'send.open':
-        return service.open(message.page);
-      case 'send.undo':
-        return service.undo(message.id).then(() => ({ ok: true }));
-      case 'send.retry':
-        return service.retry(message.id).then(() => ({ ok: true }));
-      case 'send.remove':
-        return service.remove(message.id).then(() => ({ ok: true }));
-    }
-  };
-}
-
-export interface SendConnection {
-  open(page: Page | null): Promise<Opened>;
-  undo(id: LinkId): Promise<void>;
-  retry(id: LinkId): Promise<void>;
-  remove(id: LinkId): Promise<void>;
-}
+export type SendConnection = Client<typeof sendGroup>;
 
 // The popup's side. The links themselves come from storage, not from these replies.
-export function connectSend(
-  send: (request: SendRequest) => Promise<SendReply> = (request) =>
-    browser.runtime.sendMessage(request),
-): SendConnection {
-  return {
-    open: (page) => send({ type: 'send.open', page }) as Promise<Opened>,
-    undo: async (id) => {
-      await send({ type: 'send.undo', id });
-    },
-    retry: async (id) => {
-      await send({ type: 'send.retry', id });
-    },
-    remove: async (id) => {
-      await send({ type: 'send.remove', id });
-    },
-  };
-}
-
-// sendResponse with `return true` works in every Chrome version; a returned promise does not.
-export function serveSend(service: SendService) {
-  const answer = answerSend(service);
-  browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-    const reply = answer(message);
-    if (!reply) return;
-    void reply.then(sendResponse);
-    return true;
-  });
+export function connectSend(path: MessagePath = runtimePath()): SendConnection {
+  return connect(sendGroup, path);
 }
