@@ -593,6 +593,94 @@ describe('notifications', () => {
   });
 });
 
+describe('popup view', () => {
+  test('gives the popup a waiting row with its seconds left', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved, fake timers at 2026-11-01T10:00:00Z; example.com sent at t = 0
+    const { sender } = await setUp();
+    const opened = await sender.open(EXAMPLE);
+    await advance(1_000);
+    if (opened.kind !== 'added') throw new Error(`not added: ${opened.kind}`);
+    // When
+    const view = await sender.view();
+    // Then
+    expect(view).toEqual({
+      rows: [
+        {
+          id: opened.id,
+          title: 'Example Domain',
+          address: 'example.com',
+          icon: null,
+          chat: 'Read Later Bot',
+          status: 'waiting',
+          seconds: 4,
+          leftMs: 4000,
+        },
+      ],
+      undoMs: 5000,
+      sendLimit: 10,
+    });
+  });
+
+  test('gives each failed row its reason text', async () => {
+    // Given: as above, five pages that each fail their first send, sent at 10:00:00
+    const { sender } = await setUp();
+    for (const url of [
+      'https://example.com/#fail=offline',
+      'https://example.org/#fail=logged-out',
+      'https://example.net/#fail=unreachable',
+      'https://example.com/?flood#fail=wait-30',
+      'https://example.org/?other#fail=other',
+    ]) {
+      await sender.open({ url, title: 'Example Domain', icon: null });
+    }
+    await advance(5_000);
+    // When
+    const view = await sender.view();
+    // Then
+    expect(
+      view.rows
+        .map((row) =>
+          row.status === 'failed'
+            ? [row.address, row.reason, row.text, row.retryIn]
+            : [row.address, row.status],
+        )
+        .sort(),
+    ).toEqual([
+      ['example.com', 'offline', 'Not sent: no internet', 0],
+      ['example.com?flood', 'wait', 'Not sent: Telegram asks to wait', 30],
+      ['example.net', 'unreachable', "Not sent: can't reach Read Later Bot", 0],
+      ['example.org', 'logged-out', 'Not sent: you were logged out', 0],
+      ['example.org?other', 'other', 'Not sent: something went wrong', 0],
+    ]);
+  });
+
+  test('answers with the saved links while it still loads them', async () => {
+    // Given: a link that failed with no internet, saved before the worker woke
+    await storage.setItem('local:links', {
+      links: [
+        {
+          id: 'a',
+          page: EXAMPLE,
+          account: LINH.id,
+          chat: READ_LATER,
+          sendAt: Date.parse('2026-11-01T10:00:00Z'),
+          status: 'failed',
+          failure: { reason: 'offline' },
+        },
+      ],
+      times: [],
+    });
+    const service = createSendService(createFakeSend());
+    const sender = connectSend(memoryPath([served(sendGroup, service)]));
+    const loading = service.start();
+    // When
+    const view = await sender.view();
+    await loading;
+    // Then
+    expect(view.rows.map((row) => [row.id, row.status])).toEqual([['a', 'failed']]);
+  });
+});
+
 describe('Chrome restart', () => {
   // A waiting link due at 10:00:03 and a link that failed earlier, saved before Chrome closed.
   async function savedBeforeClose() {
