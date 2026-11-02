@@ -1,7 +1,11 @@
 import type { ChatId } from './chats';
 
-/** Why a send did not reach Telegram. `seconds` is how long Telegram asks to wait. */
+/**
+ * Why Telegram did not take a send. `repeat`: it already has a message with this key.
+ * `seconds` is how long Telegram asks to wait.
+ */
 export type SendFailure =
+  | { reason: 'repeat' }
   | { reason: 'offline' }
   | { reason: 'logged-out' }
   | { reason: 'unreachable' }
@@ -21,6 +25,7 @@ export interface TelegramSend {
   /**
    * `key` is the link id; a Retry passes the same key, so Telegram can tell a repeat.
    * Rejects with SendError, or with anything else for a cause no reason names.
+   * `signal` aborts when the send code stops waiting; send nothing after it.
    */
-  sendText(chat: ChatId, text: string, key: string): Promise<void>;
+  sendText(chat: ChatId, text: string, key: string, signal: AbortSignal): Promise<void>;
 }

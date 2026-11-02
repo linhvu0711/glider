@@ -78,6 +78,8 @@ const CANT_REACH = [
 
 export function toSendError(e: unknown): SendError {
   if (e instanceof SendError) return e;
+  // The same link id gives the same random id, so Telegram already has this send.
+  if (tl.RpcError.is(e, 'RANDOM_ID_DUPLICATE')) return new SendError({ reason: 'repeat' });
   // mtcute sleeps through waits of up to 10 s itself; longer ones reach here.
   if (
     tl.RpcError.is(e, 'FLOOD_WAIT_%d') ||
@@ -94,14 +96,6 @@ export function toSendError(e: unknown): SendError {
     return new SendError({ reason: 'unreachable' });
   }
   return new SendError({ reason: 'other' });
-}
-
-// Rejects with the signal's reason when it aborts first.
-function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise((resolve, reject) => {
-    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-    promise.then(resolve, reject);
-  });
 }
 
 // The same link id gives the same random id, so Telegram turns down a Retry of a message it has.
@@ -391,24 +385,16 @@ export function createMtcuteSend(client: MtcuteClient): TelegramSend {
       await t.prepare();
       return (await t.storage.self.fetch())?.userId ?? null;
     },
-    async sendText(chat, text, key) {
-      if (!navigator.onLine) throw new SendError({ reason: 'offline' });
-      // With no network, mtcute waits for it forever; no answer in time means no internet.
-      const limit = new AbortController();
-      const timer = setTimeout(
-        () => limit.abort(new SendError({ reason: 'offline' })),
-        TIMEOUT_MS,
-      );
+    async sendText(chat, text, key, signal) {
       try {
         const t = client.get();
         // The spike sent only after start had loaded the user (issue #5, Known).
-        await untilAborted(t.start({}), limit.signal);
-        await t.sendText(chat, text, { randomId: randomIdOf(key), abortSignal: limit.signal });
+        await t.start({});
+        // The send code stopped waiting during start: send nothing.
+        if (signal.aborted) throw signal.reason;
+        await t.sendText(chat, text, { randomId: randomIdOf(key), abortSignal: signal });
       } catch (e) {
-        if (tl.RpcError.is(e, 'RANDOM_ID_DUPLICATE')) return;
         throw toSendError(e);
-      } finally {
-        clearTimeout(timer);
       }
     },
   };

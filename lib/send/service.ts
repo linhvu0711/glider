@@ -26,6 +26,9 @@ const sendList = storage.defineItem<Sends>('local:links', {
 const browserOpen = storage.defineItem<boolean>('session:browserOpen', { fallback: false });
 
 const UNDO_MS = 5_000;
+// How long a send waits for Telegram. With no network mtcute waits forever, so no answer in
+// time means no internet.
+const ANSWER_MS = 15_000;
 // How long a sent link stays in the popup.
 const SHOWN_MS = 2_500;
 const SEND_LIMIT = 10;
@@ -75,12 +78,22 @@ function rowOf(link: Link, now: number): Row {
   }
 }
 
-function failureOf(e: unknown, now: number): LinkFailure {
+function failureOf(e: unknown, now: number): LinkFailure | null {
   if (!(e instanceof SendError)) return { reason: 'other' };
   const { failure } = e;
+  // Telegram already has this link's message: an earlier try got through, so it counts as sent.
+  if (failure.reason === 'repeat') return null;
   return failure.reason === 'wait'
     ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
     : { reason: failure.reason };
+}
+
+// Rejects with the signal's reason when it aborts first.
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    promise.then(resolve, reject);
+  });
 }
 
 function retryIn(failure: LinkFailure, now: number): number {
@@ -219,11 +232,30 @@ export function createSendService(telegram: TelegramSend): SendService {
     if (link) await deliver(link);
   }
 
-  async function deliver(link: Link) {
-    const failure = await telegram.sendText(link.chat.id, link.page.url, link.id).then(
-      () => null,
-      (e: unknown) => failureOf(e, Date.now()),
+  // The one place a link meets Telegram, so the real Telegram and the fake follow the same
+  // send rules.
+  async function sendToTelegram(link: Link): Promise<LinkFailure | null> {
+    if (!navigator.onLine) return { reason: 'offline' };
+    const limit = new AbortController();
+    const timer = setTimeout(
+      () => limit.abort(new SendError({ reason: 'offline' })),
+      ANSWER_MS,
     );
+    try {
+      await untilAborted(
+        telegram.sendText(link.chat.id, link.page.url, link.id, limit.signal),
+        limit.signal,
+      );
+      return null;
+    } catch (e) {
+      return failureOf(e, Date.now());
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function deliver(link: Link) {
+    const failure = await sendToTelegram(link);
     await serial(() => {
       if (failure) return fail(link.id, failure);
       sentAt = Date.now();
