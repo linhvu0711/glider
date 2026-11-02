@@ -392,7 +392,6 @@ export function createMtcuteSend(client: MtcuteClient): TelegramSend {
       return (await t.storage.self.fetch())?.userId ?? null;
     },
     async sendText(chat, text, key) {
-      if (!navigator.onLine) throw new SendError({ reason: 'offline' });
       // With no network, mtcute waits for it forever; no answer in time means no internet.
       const limit = new AbortController();
       const timer = setTimeout(

@@ -742,3 +742,23 @@ describe('Chrome restart', () => {
     ]);
   });
 });
+
+describe('send rules', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('fails at once as no internet when the browser is offline', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved, the fake Telegram; the browser is offline
+    const { telegram, sender } = await setUp();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    // When
+    await sender.open(EXAMPLE);
+    await advance(5_000);
+    // Then
+    expect([(await links())[0], telegram.sent]).toMatchObject([
+      { status: 'failed', failure: { reason: 'offline' } },
+      [],
+    ]);
+  });
+});

@@ -219,11 +219,18 @@ export function createSendService(telegram: TelegramSend): SendService {
     if (link) await deliver(link);
   }
 
-  async function deliver(link: Link) {
-    const failure = await telegram.sendText(link.chat.id, link.page.url, link.id).then(
+  // The one place a link meets Telegram, so the real Telegram and the fake follow the same
+  // send rules.
+  async function sendToTelegram(link: Link): Promise<LinkFailure | null> {
+    if (!navigator.onLine) return { reason: 'offline' };
+    return telegram.sendText(link.chat.id, link.page.url, link.id).then(
       () => null,
       (e: unknown) => failureOf(e, Date.now()),
     );
+  }
+
+  async function deliver(link: Link) {
+    const failure = await sendToTelegram(link);
     await serial(() => {
       if (failure) return fail(link.id, failure);
       sentAt = Date.now();

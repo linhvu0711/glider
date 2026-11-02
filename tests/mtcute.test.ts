@@ -301,18 +301,6 @@ describe('mtcute send failures', () => {
     ]);
   });
 
-  test('says no internet at once when the browser is offline', async () => {
-    // Given: the browser is offline
-    const { stub, calls } = sendStub();
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    // When
-    const failure = await createMtcuteSend(stub)
-      .sendText(7001 as ChatId, 'https://example.com/', 'k')
-      .catch((e: SendError) => e.failure);
-    // Then
-    expect([failure, calls]).toEqual([{ reason: 'offline' }, []]);
-  });
-
   test('gives up after 15 s with no answer', async () => {
     // Given: fake timers; a start that never settles
     vi.useFakeTimers();
