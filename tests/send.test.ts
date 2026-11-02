@@ -533,6 +533,42 @@ describe('retry', () => {
     expect((await links())[0]).toMatchObject({ status: 'failed', failure: { reason: 'unreachable' } });
   });
 
+  test('fails a retry when the account check throws', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the first send has no internet,
+    // and the check on Retry throws
+    const { sender } = await setUp({
+      telegram: withChecks(['ok', 'ok', 'throws'], scripted(new SendError({ reason: 'offline' }))),
+    });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    // Then
+    expect([(await links())[0], lastNotice(create)]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'Not sent: something went wrong.',
+    ]);
+  });
+
+  test('fails a retry when the account check never answers', async () => {
+    // Given: as above; the check on Retry never answers
+    const { sender } = await setUp({
+      telegram: withChecks(['ok', 'ok', 'hangs'], scripted(new SendError({ reason: 'offline' }))),
+    });
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    const done = sender.retry(id);
+    await advance(15_000);
+    await done;
+    const failed = (await links())[0];
+    const next = await sender.open(EXAMPLE_ORG);
+    // Then
+    expect([failed, next.kind]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'added',
+    ]);
+  });
+
   test('Retry before the wait is over does nothing', async () => {
     // Given: a link for #fail=wait-30 failed at 10:00:05
     const { telegram, sender } = await setUp();

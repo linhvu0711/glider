@@ -357,7 +357,14 @@ export function createSendService(telegram: TelegramSend): SendService {
         const found = state.links.find((l) => l.id === id);
         if (found?.status !== 'failed') return undefined;
         if (found.failure.reason === 'wait' && Date.now() < found.failure.retryAt) return undefined;
-        if ((await telegram.account()) !== found.account) {
+        let account: number | null;
+        try {
+          account = await accountWithin();
+        } catch {
+          await fail(id, { reason: 'other' });
+          return undefined;
+        }
+        if (account !== found.account) {
           await fail(id, { reason: 'logged-out' });
           return undefined;
         }
