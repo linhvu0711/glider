@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { storage } from 'wxt/utils/storage';
 import Popup from '../entrypoints/popup/Popup';
-import { answerSend, connectSend } from '../lib/send/connection';
+import { memoryPath, served } from '../lib/messages';
+import { connectSend, sendGroup } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import type { Page } from '../lib/send/state';
 import { createFakeChats, createFakeSend, FAKE_CHATS, LINH, type FakeSend } from '../lib/telegram/fake';
@@ -38,7 +39,7 @@ async function setUp({
   if (saved) await storage.setItem('local:targetChat', { account: LINH.id, chat: READ_LATER });
   const service = createSendService(telegram);
   await service.start();
-  const sender = connectSend((request) => answerSend(service)(request)!);
+  const sender = connectSend(memoryPath([served(sendGroup, service)]));
   const openSettings = vi.fn();
   const openChatSettings = vi.fn();
   const close = vi.fn();

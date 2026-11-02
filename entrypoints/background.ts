@@ -4,7 +4,8 @@ import { deviceLabel, deviceName } from '../lib/device';
 import { servePort } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
-import { serveSend } from '../lib/send/connection';
+import { serve, served } from '../lib/messages';
+import { sendGroup } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
 import { telegramConfig } from '../lib/telegram/config';
 import type { TelegramChats } from '../lib/telegram/chats';
@@ -45,7 +46,7 @@ export default defineBackground({
     serveChats(() => chats);
 
     const sender = createSendService(fake ? createFakeSend() : createMtcuteSend(client));
-    serveSend(sender);
+    serve([served(sendGroup, sender)]);
     void sender.start();
 
     const host = createHost(async (scenarioName) => {
