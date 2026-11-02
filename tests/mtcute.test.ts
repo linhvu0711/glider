@@ -255,6 +255,7 @@ describe('mtcute send failures', () => {
   test('maps Telegram errors to send failures', () => {
     // Given
     const errors: unknown[] = [
+      new tl.RpcError(400, 'RANDOM_ID_DUPLICATE'),
       tl.RpcError.fromTl({ _: 'mt_rpc_error', errorCode: 420, errorMessage: 'FLOOD_WAIT_30' }),
       tl.RpcError.fromTl({ _: 'mt_rpc_error', errorCode: 420, errorMessage: 'SLOWMODE_WAIT_12' }),
       new tl.RpcError(401, 'AUTH_KEY_UNREGISTERED'),
@@ -271,6 +272,7 @@ describe('mtcute send failures', () => {
     const failures = errors.map((e) => toSendError(e).failure);
     // Then
     expect(failures).toEqual([
+      { reason: 'repeat' },
       { reason: 'wait', seconds: 30 },
       { reason: 'wait', seconds: 12 },
       { reason: 'logged-out' },
@@ -322,23 +324,5 @@ describe('mtcute send failures', () => {
       .catch((e: SendError) => e.failure);
     // Then
     expect([failure, calls]).toEqual([{ reason: 'other' }, ['start']]);
-  });
-
-  test('a random id Telegram already has counts as sent', async () => {
-    // Given: Telegram says the random id was used
-    const { stub } = sendStub({
-      sendText: async () => {
-        throw new tl.RpcError(400, 'RANDOM_ID_DUPLICATE');
-      },
-    });
-    // When
-    const result = await createMtcuteSend(stub).sendText(
-      7001 as ChatId,
-      'https://example.com/',
-      '123e4567-e89b-12d3-a456-426614174000',
-      new AbortController().signal,
-    );
-    // Then
-    expect(result).toBe(undefined);
   });
 });

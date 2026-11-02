@@ -78,9 +78,11 @@ function rowOf(link: Link, now: number): Row {
   }
 }
 
-function failureOf(e: unknown, now: number): LinkFailure {
+function failureOf(e: unknown, now: number): LinkFailure | null {
   if (!(e instanceof SendError)) return { reason: 'other' };
   const { failure } = e;
+  // Telegram already has this link's message: an earlier try got through, so it counts as sent.
+  if (failure.reason === 'repeat') return null;
   return failure.reason === 'wait'
     ? { reason: 'wait', retryAt: now + failure.seconds * 1000 }
     : { reason: failure.reason };

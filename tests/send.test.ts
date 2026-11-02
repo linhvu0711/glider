@@ -777,4 +777,17 @@ describe('send rules', () => {
       { status: 'failed', failure: { reason: 'offline' } },
     ]);
   });
+
+  test('a repeat of the same link counts as sent', async () => {
+    // Given: a link whose first try failed as no internet; Telegram already has its message
+    const { sender } = await setUp({
+      telegram: scripted(new SendError({ reason: 'offline' }), new SendError({ reason: 'repeat' })),
+    });
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    await advance(0);
+    // Then
+    expect(await statuses()).toEqual(['sent']);
+  });
 });

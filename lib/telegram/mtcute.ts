@@ -78,6 +78,8 @@ const CANT_REACH = [
 
 export function toSendError(e: unknown): SendError {
   if (e instanceof SendError) return e;
+  // The same link id gives the same random id, so Telegram already has this send.
+  if (tl.RpcError.is(e, 'RANDOM_ID_DUPLICATE')) return new SendError({ reason: 'repeat' });
   // mtcute sleeps through waits of up to 10 s itself; longer ones reach here.
   if (
     tl.RpcError.is(e, 'FLOOD_WAIT_%d') ||
@@ -392,7 +394,6 @@ export function createMtcuteSend(client: MtcuteClient): TelegramSend {
         if (signal.aborted) throw signal.reason;
         await t.sendText(chat, text, { randomId: randomIdOf(key), abortSignal: signal });
       } catch (e) {
-        if (tl.RpcError.is(e, 'RANDOM_ID_DUPLICATE')) return;
         throw toSendError(e);
       }
     },

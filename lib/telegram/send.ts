@@ -1,7 +1,11 @@
 import type { ChatId } from './chats';
 
-/** Why a send did not reach Telegram. `seconds` is how long Telegram asks to wait. */
+/**
+ * Why Telegram did not take a send. `repeat`: it already has a message with this key.
+ * `seconds` is how long Telegram asks to wait.
+ */
 export type SendFailure =
+  | { reason: 'repeat' }
   | { reason: 'offline' }
   | { reason: 'logged-out' }
   | { reason: 'unreachable' }
