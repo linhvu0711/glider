@@ -1,28 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatAvatar } from '../../components/chat-avatar';
 import { AlertIcon, GearIcon, GlobeIcon, UndoIcon } from '../../components/icons';
 import { ShortcutKeys } from '../../components/shortcut-keys';
 import type { SendConnection } from '../../lib/send/connection';
-import { SEND_LIMIT, sendList, UNDO_MS } from '../../lib/send/service';
-import { addressOf, type Link, type Opened } from '../../lib/send/state';
+import type { Opened, Row, SendView } from '../../lib/send/state';
 import type { TelegramChats } from '../../lib/telegram/chats';
-
-// The send service writes the links; the popup only shows them.
-function useLinks(): Link[] {
-  const [links, setLinks] = useState<Link[]>([]);
-  useEffect(() => {
-    let live = true;
-    void sendList.getValue().then((value) => {
-      if (live) setLinks(value.links);
-    });
-    const unwatch = sendList.watch((value) => setLinks(value.links));
-    return () => {
-      live = false;
-      unwatch();
-    };
-  }, []);
-  return links;
-}
 
 function useOpened(opened: Promise<Opened>): Opened | null {
   const [result, setResult] = useState<Opened | null>(null);
@@ -38,15 +20,46 @@ function useOpened(opened: Promise<Opened>): Opened | null {
   return result;
 }
 
+// The send code owns the rows; the popup asks for them again this often while it is open.
 const TICK_MS = 250;
 
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
+function useView(
+  sender: SendConnection,
+  opened: Promise<Opened>,
+): { view: SendView | null; refresh: () => void } {
+  const [view, setView] = useState<SendView | null>(null);
+  const live = useRef(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const asked = useRef(0);
+
+  const refresh = useCallback(() => {
+    clearTimeout(timer.current);
+    const ask = (asked.current += 1);
+    const next = () => {
+      // Only the newest ask sets the view and keeps the chain going.
+      if (!live.current || ask !== asked.current) return;
+      timer.current = setTimeout(refresh, TICK_MS);
+    };
+    sender.view().then(
+      (value) => {
+        if (live.current && ask === asked.current) setView(value);
+        next();
+      },
+      next,
+    );
+  }, [sender]);
+
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-  return now;
+    live.current = true;
+    // Both ends ask, so a popup whose send failed still shows the rows.
+    opened.then(refresh, refresh);
+    return () => {
+      live.current = false;
+      clearTimeout(timer.current);
+    };
+  }, [opened, refresh]);
+
+  return { view, refresh };
 }
 
 export default function Popup({
@@ -66,8 +79,7 @@ export default function Popup({
   close: () => void;
 }) {
   const result = useOpened(opened);
-  const links = useLinks();
-  const now = useNow();
+  const { view, refresh } = useView(sender, opened);
 
   // Chrome closes the popup on a click outside; Escape closes it here in every browser.
   useEffect(() => {
@@ -91,6 +103,7 @@ export default function Popup({
       </div>
     );
   }
+  if (!view) return <div className="popup" />;
   const focus = result.kind === 'added' || result.kind === 'already' ? result.id : null;
   return (
     <div className="popup">
@@ -109,7 +122,7 @@ export default function Popup({
       )}
       {result.kind === 'limit' && (
         <Note
-          text={`Slow down. You can send ${SEND_LIMIT} links a minute. Try again in ${result.seconds} s.`}
+          text={`Slow down. You can send ${view.sendLimit} links a minute. Try again in ${result.seconds} s.`}
         />
       )}
       {result.kind === 'not-web' && (
@@ -118,21 +131,21 @@ export default function Popup({
           text="Nothing to send on this page. Glider sends web pages only."
         />
       )}
-      {links.length === 0 ? (
+      {view.rows.length === 0 ? (
         <p className="muted nothing">Nothing waiting</p>
       ) : (
         <ul className="rows">
-          {links.map((link) => (
-            <Row
-              key={link.id}
-              link={link}
-              now={now}
-              focus={link.id === focus}
-              onUndo={() => void sender.undo(link.id)}
-              onRetry={() => void sender.retry(link.id)}
+          {view.rows.map((row) => (
+            <LinkRow
+              key={row.id}
+              row={row}
+              undoMs={view.undoMs}
+              focus={row.id === focus}
+              onUndo={() => void sender.undo(row.id).then(refresh, refresh)}
+              onRetry={() => void sender.retry(row.id).then(refresh, refresh)}
               onLogIn={() => openSettings()}
               onPickChat={() => openChatSettings()}
-              onRemove={() => void sender.remove(link.id)}
+              onRemove={() => void sender.remove(row.id).then(refresh, refresh)}
             />
           ))}
         </ul>
@@ -140,7 +153,7 @@ export default function Popup({
       <footer className="popup-foot">
         <ShortcutKeys />
         <span>to send</span>
-        <span className="popup-undo">5 s to undo</span>
+        <span className="popup-undo">{`${view.undoMs / 1000} s to undo`}</span>
       </footer>
     </div>
   );
@@ -158,34 +171,14 @@ function Note({ title, text }: { title?: string; text: string }) {
   );
 }
 
-function reasonOf(link: Link & { status: 'failed' }): string {
-  switch (link.failure.reason) {
-    case 'offline':
-      return 'Not sent: no internet';
-    case 'logged-out':
-      return 'Not sent: you were logged out';
-    case 'unreachable':
-      return `Not sent: can't reach ${link.chat.name}`;
-    case 'wait':
-      return 'Not sent: Telegram asks to wait';
-    case 'other':
-      return 'Not sent: something went wrong';
-    case 'closed':
-      return 'Not sent: Chrome closed first';
-  }
-}
-
 function RetryButton({
-  link,
-  now,
+  row,
   onRetry,
 }: {
-  link: Link & { status: 'failed' };
-  now: number;
+  row: Row & { status: 'failed' };
   onRetry: () => void;
 }) {
-  const wait =
-    link.failure.reason === 'wait' ? Math.ceil((link.failure.retryAt - now) / 1000) : 0;
+  const wait = row.retryIn;
   return (
     <button type="button" className="button row-button" disabled={wait > 0} onClick={onRetry}>
       {wait > 0 ? `Retry in ${wait} s` : 'Retry'}
@@ -193,9 +186,9 @@ function RetryButton({
   );
 }
 
-function Row({
-  link,
-  now,
+function LinkRow({
+  row,
+  undoMs,
   focus,
   onUndo,
   onRetry,
@@ -203,8 +196,8 @@ function Row({
   onPickChat,
   onRemove,
 }: {
-  link: Link;
-  now: number;
+  row: Row;
+  undoMs: number;
   focus: boolean;
   onUndo: () => void;
   onRetry: () => void;
@@ -213,45 +206,45 @@ function Row({
   onRemove: () => void;
 }) {
   // Set once, so the bar keeps draining from where the send left it, also after the popup opens again.
-  const [drainDelay] = useState(() => -(UNDO_MS - Math.max(0, link.sendAt - Date.now())));
-  const waiting = link.status === 'waiting';
+  const [drainDelay] = useState(() => -(undoMs - (row.status === 'waiting' ? row.leftMs : 0)));
+  const waiting = row.status === 'waiting';
   return (
     <li className="row">
       <span className="row-icon">
-        {link.page.icon ? (
-          <img src={link.page.icon} alt="" width={20} height={20} />
+        {row.icon ? (
+          <img src={row.icon} alt="" width={20} height={20} />
         ) : (
           <GlobeIcon width={20} height={20} />
         )}
       </span>
       <span className="row-text">
-        <span className="row-title">{link.page.title}</span>
-        <span className="row-address">{addressOf(link.page.url)}</span>
-        {waiting && (
-          <span className="row-state row-state-blue">{`Sending in ${Math.max(1, Math.ceil((link.sendAt - now) / 1000))} s`}</span>
+        <span className="row-title">{row.title}</span>
+        <span className="row-address">{row.address}</span>
+        {row.status === 'waiting' && (
+          <span className="row-state row-state-blue">{`Sending in ${row.seconds} s`}</span>
         )}
-        {link.status === 'sending' && <span className="row-state row-state-blue">Sending…</span>}
-        {link.status === 'sent' && (
-          <span className="row-state row-state-green">{`Sent to ${link.chat.name}`}</span>
+        {row.status === 'sending' && <span className="row-state row-state-blue">Sending…</span>}
+        {row.status === 'sent' && (
+          <span className="row-state row-state-green">{`Sent to ${row.chat}`}</span>
         )}
-        {link.status === 'undone' && (
+        {row.status === 'undone' && (
           <span className="row-state muted">Undone. Nothing was sent.</span>
         )}
-        {link.status === 'failed' && (
+        {row.status === 'failed' && (
           <span className="row-state row-state-red row-reason">
             <AlertIcon width={14} height={14} />
-            <span>{reasonOf(link)}</span>
+            <span>{row.text}</span>
           </span>
         )}
-        {link.status === 'failed' && (
+        {row.status === 'failed' && (
           <span className="row-actions">
-            <RetryButton link={link} now={now} onRetry={onRetry} />
-            {link.failure.reason === 'logged-out' && (
+            <RetryButton row={row} onRetry={onRetry} />
+            {row.reason === 'logged-out' && (
               <button type="button" className="button-plain row-button" onClick={onLogIn}>
                 Log in again
               </button>
             )}
-            {link.failure.reason === 'unreachable' && (
+            {row.reason === 'unreachable' && (
               <button type="button" className="button-plain row-button" onClick={onPickChat}>
                 Pick another chat
               </button>
@@ -277,7 +270,7 @@ function Row({
         <span
           className="drain"
           data-testid="drain-bar"
-          style={{ animationDuration: `${UNDO_MS}ms`, animationDelay: `${drainDelay}ms` }}
+          style={{ animationDuration: `${undoMs}ms`, animationDelay: `${drainDelay}ms` }}
         />
       )}
     </li>
