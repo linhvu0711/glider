@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { deviceLabel, keysFor } from '../lib/device';
+import { deviceLabel, deviceName, keysFor } from '../lib/device';
 
 describe('deviceLabel', () => {
   test('names Brave on macOS', () => {
@@ -11,7 +11,7 @@ describe('deviceLabel', () => {
       },
     };
     // When / Then
-    expect(deviceLabel(nav)).toBe('Brave on macOS');
+    expect(deviceLabel(nav)).toEqual({ browser: 'Brave', os: 'macOS' });
   });
 
   test('names Brave from navigator.brave', () => {
@@ -21,7 +21,7 @@ describe('deviceLabel', () => {
       userAgentData: { brands: [{ brand: 'Chromium' }], platform: 'Windows' },
     };
     // When / Then
-    expect(deviceLabel(nav)).toBe('Brave on Windows');
+    expect(deviceLabel(nav)).toEqual({ browser: 'Brave', os: 'Windows' });
   });
 
   test('names Chrome on Windows', () => {
@@ -33,7 +33,7 @@ describe('deviceLabel', () => {
       },
     };
     // When / Then
-    expect(deviceLabel(nav)).toBe('Chrome on Windows');
+    expect(deviceLabel(nav)).toEqual({ browser: 'Chrome', os: 'Windows' });
   });
 
   test('names Edge on Linux', () => {
@@ -45,14 +45,26 @@ describe('deviceLabel', () => {
       },
     };
     // When / Then
-    expect(deviceLabel(nav)).toBe('Edge on Linux');
+    expect(deviceLabel(nav)).toEqual({ browser: 'Edge', os: 'Linux' });
   });
 
   test('names Chromium with no OS', () => {
     // Given: brands Chromium; platform ''
     const nav = { userAgentData: { brands: [{ brand: 'Chromium' }], platform: '' } };
     // When / Then
-    expect(deviceLabel(nav)).toBe('Chromium');
+    expect(deviceLabel(nav)).toEqual({ browser: 'Chromium', os: null });
+  });
+});
+
+describe('deviceName', () => {
+  test('joins the browser and the system into one name', () => {
+    // Given: Brave on macOS, and Chromium with no OS
+    const devices = [
+      { browser: 'Brave', os: 'macOS' },
+      { browser: 'Chromium', os: null },
+    ];
+    // When / Then
+    expect(devices.map(deviceName)).toEqual(['Brave on macOS', 'Chromium']);
   });
 });
 

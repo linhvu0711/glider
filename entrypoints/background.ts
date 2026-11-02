@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import { serveChats } from '../lib/chats/connection';
-import { deviceLabel } from '../lib/device';
+import { deviceLabel, deviceName } from '../lib/device';
 import { servePort } from '../lib/login/connection';
 import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
@@ -53,10 +53,10 @@ export default defineBackground({
         if (scenarioName !== undefined) await fakeSession.removeValue();
         const scenario = isFakeScenario(scenarioName) ? scenarioName : 'default';
         chats = createFakeChats({ scenario });
-        return createLoginService(createFakeAuth({ scenario }), device);
+        return createLoginService(createFakeAuth({ scenario }), deviceName(device));
       }
       chats = createMtcuteChats(client);
-      return createLoginService(createMtcuteAuth(client), device);
+      return createLoginService(createMtcuteAuth(client), deviceName(device));
     }, { fake });
 
     let ports = 0;

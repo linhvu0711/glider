@@ -7,6 +7,7 @@ import {
   tl,
   User,
 } from '@mtcute/web';
+import { deviceName, type Device } from '../device';
 import { AuthError, type Account, type TelegramAuth } from './auth';
 import type { Chat, ChatId, TelegramChats } from './chats';
 import { SendError, type TelegramSend } from './send';
@@ -16,18 +17,17 @@ const DATABASE = 'glider';
 
 export function mtcuteClientOptions(
   config: { apiId: number; apiHash: string },
-  device: string,
+  device: Device,
   version: string,
 ) {
-  const [, os] = device.split(' on ');
   return {
     apiId: config.apiId,
     apiHash: config.apiHash,
     storage: DATABASE,
     initConnectionOptions: {
-      deviceModel: `Glider · ${device}`,
+      deviceModel: `Glider · ${deviceName(device)}`,
       appVersion: version,
-      systemVersion: os ?? 'unknown',
+      systemVersion: device.os ?? 'unknown',
     },
   };
 }
@@ -217,7 +217,7 @@ export interface MtcuteClient {
 // One client for login and the chat list, so both use one saved session.
 export function createMtcuteClient(
   config: { apiId: number; apiHash: string },
-  device: string,
+  device: Device,
   version: string,
 ): MtcuteClient {
   let client: TelegramClient | null = null;
