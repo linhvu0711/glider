@@ -262,13 +262,15 @@ function QrStep({
             </button>
           </div>
         ) : code ? (
-          <QRCodeSVG
-            value={code.url}
-            data-value={code.url}
-            size={176}
-            level="H"
-            imageSettings={{ src: iconDataUrl, width: 40, height: 40, excavate: true }}
-          />
+          <div className="qr-paper">
+            <QRCodeSVG
+              value={code.url}
+              data-value={code.url}
+              size={176}
+              level="H"
+              imageSettings={{ src: iconDataUrl, width: 40, height: 40, excavate: true }}
+            />
+          </div>
         ) : (
           <div className="qr-loading">
             <span className="spinner" />

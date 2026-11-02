@@ -120,6 +120,19 @@ describe('QR login', () => {
     expect(screen.getByText('New code in 0:30')).toBeTruthy();
   });
 
+  test('shows the QR code on a white square', async () => {
+    // Given: fake scenario default, the first code arrived
+    renderApp('default');
+    await advance(0);
+    // When
+    const code = qrBox().querySelector('svg');
+    // Then
+    expect({
+      paper: code?.parentElement?.className,
+      white: code?.querySelector('path')?.getAttribute('fill'),
+    }).toEqual({ paper: 'qr-paper', white: '#FFFFFF' });
+  });
+
   test('counts down and shows a fresh code at 0', async () => {
     // Given: as above
     renderApp('default');

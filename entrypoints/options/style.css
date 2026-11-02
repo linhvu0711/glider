@@ -90,6 +90,14 @@
   border-radius: var(--radius-card);
 }
 
+/* A phone needs a white edge around the code to scan it, also on a dark card. */
+.qr-paper {
+  display: flex;
+  padding: 8px;
+  border-radius: var(--radius-control);
+  background: var(--qr-paper);
+}
+
 .qr-loading {
   display: flex;
   flex-direction: column;
