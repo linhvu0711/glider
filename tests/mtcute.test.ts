@@ -18,7 +18,7 @@ describe('mtcute adapter edges', () => {
     // Given: config, device Brave on macOS, version 0.1.0
     const config = { apiId: 12345, apiHash: 'abc123' };
     // When
-    const options = mtcuteClientOptions(config, 'Brave on macOS', '0.1.0');
+    const options = mtcuteClientOptions(config, { browser: 'Brave', os: 'macOS' }, '0.1.0');
     // Then
     expect(options).toEqual({
       apiId: 12345,
@@ -29,6 +29,19 @@ describe('mtcute adapter edges', () => {
         appVersion: '0.1.0',
         systemVersion: 'macOS',
       },
+    });
+  });
+
+  test('tells Telegram the system is unknown when the browser does not say', () => {
+    // Given: config, device Chromium with no OS, version 0.1.0
+    const config = { apiId: 12345, apiHash: 'abc123' };
+    // When
+    const options = mtcuteClientOptions(config, { browser: 'Chromium', os: null }, '0.1.0');
+    // Then
+    expect(options.initConnectionOptions).toEqual({
+      deviceModel: 'Glider · Chromium',
+      appVersion: '0.1.0',
+      systemVersion: 'unknown',
     });
   });
 
