@@ -314,7 +314,7 @@ export function createSendService(telegram: TelegramSend): SendService {
 
     open(page) {
       return serial(async (): Promise<Opened> => {
-        const account = await telegram.account();
+        const account = await accountWithin();
         const chat = account === null ? null : await readTargetChat(account);
         if (account === null || !chat) return { kind: 'setup' };
         if (!page || !isWebPage(page.url)) return { kind: 'not-web', chat };

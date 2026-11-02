@@ -418,6 +418,21 @@ describe('failed sends', () => {
     ]);
   });
 
+  test('rejects an open when the account check never answers', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the check on open never answers
+    const { service } = await setUp({ telegram: checks('hangs') });
+    // When
+    let said = 'pending';
+    void service.open(EXAMPLE).catch((e: Error) => {
+      said = e.message;
+    });
+    await advance(14_999);
+    const before = said;
+    await advance(1);
+    // Then
+    expect([before, said]).toEqual(['pending', 'The account check took too long.']);
+  });
+
   test('keeps a failed link until Retry or Remove', async () => {
     // Given: as the wait test
     const { sender } = await setUp();
