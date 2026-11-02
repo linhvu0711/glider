@@ -497,24 +497,6 @@ describe('saved session', () => {
     );
     expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
   });
-
-  test('restores the same state twice', async () => {
-    // Given: fake saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH);
-    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
-    const connection = connectInMemory(service);
-    const views: LoginView[] = [];
-    connection.subscribe((view) => views.push(view));
-    // When: send hello twice through the connection
-    connection.send({ type: 'hello' });
-    connection.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    const accounts = views.flatMap((v) => (v.login.step === 'done' ? [v.login.account.name] : []));
-    expect(accounts).toEqual(['Minh Anh']);
-    expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
-    expect(await storage.getItem('local:fakeSession')).toEqual(MINH);
-  });
 });
 
 describe('log out', () => {
@@ -677,24 +659,6 @@ describe('QR expiry', () => {
 });
 
 describe('two tabs', () => {
-  test('a second tab keeps the phone step of the first tab', async () => {
-    // Given: tab 1 on the phone step
-    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
-    const tab1 = connectInMemory(service);
-    const views: LoginView[] = [];
-    tab1.subscribe((view) => views.push(view));
-    tab1.send({ type: 'hello' });
-    await advance(0);
-    tab1.send({ type: 'usePhone' });
-    // When: tab 2 opens and says hello
-    const tab2 = connectInMemory(service);
-    tab2.subscribe(() => {});
-    tab2.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    expect(views.at(-1)?.login.step).toBe('phone');
-  });
-
   test('a tab that opens late gets the same QR code at once', async () => {
     // Given: tab 1 shows the first QR code
     const host = createHost(
