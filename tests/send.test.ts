@@ -384,6 +384,40 @@ describe('failed sends', () => {
     expect(link?.status === 'failed' ? link.failure : null).toEqual({ reason: 'other' });
   });
 
+  test('fails a link when the account check throws', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the check at the end of the 5 s throws
+    const { sender } = await setUp({ telegram: checks('ok', 'throws') });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    // When
+    await sender.open(EXAMPLE);
+    await advance(5_000);
+    // Then
+    expect([(await links())[0], lastNotice(create)]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'Not sent: something went wrong.',
+    ]);
+  });
+
+  test('fails a link when the account check never answers', async () => {
+    // Given: as above; the check at the end of the 5 s never answers
+    const { sender } = await setUp({ telegram: checks('ok', 'hangs') });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    // When
+    const first = await sender.open(EXAMPLE);
+    await advance(5_000 + 15_000);
+    const failed = [(await links())[0], lastNotice(create)];
+    const second = await sender.open(EXAMPLE_ORG);
+    if (first.kind !== 'added' || second.kind !== 'added') throw new Error('not added');
+    await sender.remove(first.id);
+    await sender.undo(second.id);
+    // Then
+    expect([failed, second.kind, await statuses()]).toMatchObject([
+      [{ status: 'failed', failure: { reason: 'other' } }, 'Not sent: something went wrong.'],
+      'added',
+      ['undone'],
+    ]);
+  });
+
   test('keeps a failed link until Retry or Remove', async () => {
     // Given: as the wait test
     const { sender } = await setUp();
@@ -422,6 +456,30 @@ function scripted(...answers: (SendError | (() => Promise<void>))[]): TelegramSe
       await answer?.();
     },
   };
+}
+
+type Check = 'ok' | 'throws' | 'hangs';
+
+// A Telegram send whose account check answers each call with the next entry, then
+// answers Linh Vu; `sendText` comes from `send`.
+function checks(...answers: Check[]): TelegramSend {
+  return withChecks(answers, scripted());
+}
+
+function withChecks(answers: Check[], send: TelegramSend): TelegramSend {
+  return {
+    account: async () => {
+      const answer = answers.shift();
+      if (answer === 'throws') throw new Error('db');
+      if (answer === 'hangs') return new Promise<never>(() => {});
+      return LINH.id;
+    },
+    sendText: send.sendText,
+  };
+}
+
+function lastNotice(create: { mock: { calls: unknown[][] } }) {
+  return (create.mock.calls.at(-1)?.[1] as { message: string } | undefined)?.message;
 }
 
 async function failedId(sender: Awaited<ReturnType<typeof setUp>>['sender'], page: Page) {
