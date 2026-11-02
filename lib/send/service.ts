@@ -15,9 +15,9 @@ import {
   type SendView,
 } from './state';
 
-// Local, so the links outlive a Chrome restart. The send service is the only writer of
-// this item; the popup reads and watches it.
-export const sendList = storage.defineItem<Sends>('local:links', {
+// Local, so the links outlive a Chrome restart. The send service is the only reader and
+// writer of this item; the popup gets rows from view().
+const sendList = storage.defineItem<Sends>('local:links', {
   fallback: { links: [], times: [] },
 });
 
@@ -25,10 +25,10 @@ export const sendList = storage.defineItem<Sends>('local:links', {
 // again, not a worker waking up. The send service is its only writer.
 const browserOpen = storage.defineItem<boolean>('session:browserOpen', { fallback: false });
 
-export const UNDO_MS = 5_000;
+const UNDO_MS = 5_000;
 // How long a sent link stays in the popup.
 const SHOWN_MS = 2_500;
-export const SEND_LIMIT = 10;
+const SEND_LIMIT = 10;
 const LIMIT_MS = 60_000;
 // How long the badge shows the check after a send.
 const CHECK_MS = 2_000;
