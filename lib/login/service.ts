@@ -122,6 +122,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       else done(account);
     } catch (e) {
       if (kindOf(e) === 'session-ended') {
+        await auth.forget();
         await setNotice(true);
         startQr();
       } else {
@@ -184,7 +185,13 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       await auth.logOut();
       startQr();
     } catch (e) {
-      if (kindOf(e) === 'offline') show({ ...current, logout: 'offline' });
+      const kind = kindOf(e);
+      if (kind === 'session-ended') {
+        await auth.forget();
+        startQr();
+      } else if (kind === 'offline') {
+        show({ ...current, logout: 'offline' });
+      }
     }
   }
 

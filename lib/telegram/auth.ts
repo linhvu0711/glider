@@ -30,4 +30,6 @@ export interface TelegramAuth {
   submitCode(code: string): Promise<Account | 'password'>;
   submitPassword(password: string): Promise<Account>;
   logOut(): Promise<void>;
+  /** Deletes the session saved on this device, with no call to Telegram. */
+  forget(): Promise<void>;
 }

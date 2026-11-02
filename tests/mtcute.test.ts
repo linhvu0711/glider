@@ -509,6 +509,42 @@ describe('mtcute login', () => {
     expect([calls, resets()]).toEqual([['logOut'], 0]);
   });
 
+  test('reports an ended session on restore and keeps the saved data', async () => {
+    // Given: saved user 7100; Telegram says the session was revoked
+    const { stub, resets } = authStub({
+      ...SAVED_SELF,
+      call: async () => {
+        throw new tl.RpcError(401, 'SESSION_REVOKED');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).restore());
+    // Then
+    expect([kind, resets()]).toEqual(['session-ended', 0]);
+  });
+
+  test('reports an ended session on log out and keeps the saved data', async () => {
+    // Given: Telegram no longer knows the session
+    const { stub, resets } = authStub({
+      logOut: async () => {
+        throw new tl.RpcError(401, 'AUTH_KEY_UNREGISTERED');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).logOut());
+    // Then
+    expect([kind, resets()]).toEqual(['session-ended', 0]);
+  });
+
+  test('forget deletes the saved session', async () => {
+    // Given: a client
+    const { stub, resets } = authStub({});
+    // When
+    await createMtcuteAuth(stub).forget();
+    // Then
+    expect(resets()).toBe(1);
+  });
+
   test('stays logged in when log out cannot reach Telegram', async () => {
     // Given: the log out never reaches Telegram
     const { stub, resets } = authStub({

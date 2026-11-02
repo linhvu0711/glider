@@ -138,8 +138,10 @@ export function createFakeAuth(options: { scenario: FakeScenario }): FakeAuth {
     },
     async logOut() {
       await respond();
+      if (scenario === 'revoked') throw new AuthError('session-ended');
       await fakeSession.setValue(null);
     },
+    forget: () => fakeSession.setValue(null),
   };
 }
 
