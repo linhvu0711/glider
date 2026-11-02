@@ -917,25 +917,36 @@ describe('choose the chat: save', () => {
     ]).toEqual(['Read Later Bot', true, true]);
   });
 
-  test('two tabs that save the same chat keep one saved chat', async () => {
-    // Given: saved session Minh Anh, two pages
+  test('a second tab shows the chat the first tab saved', async () => {
+    // Given: saved session Minh Anh, nothing saved, two pages
     await storage.setItem('local:fakeSession', MINH);
     const user = setupUser();
-    const tabs = [document.createElement('div'), document.createElement('div')];
-    for (const tab of tabs) {
+    const [first, second] = [document.createElement('div'), document.createElement('div')];
+    for (const tab of [first, second]) {
       document.body.appendChild(tab);
       renderSettings('default', { container: tab });
     }
     await advance(0);
-    // When: each page picks Read Later Bot and saves
-    for (const tab of tabs) {
-      await user.click(within(tab).getByRole('radio', { name: 'Read Later Bot' }));
-      const save = within(tab).getByRole('button', { name: 'Save' }) as HTMLButtonElement;
-      if (!save.disabled) await user.click(save);
-      await advance(0);
-    }
+    const currentIn = (tab: HTMLElement) =>
+      within(tab)
+        .getByText('Current')
+        .closest('label')
+        ?.querySelector('input')
+        ?.getAttribute('aria-label');
+    // When: the first page saves Read Later Bot, then the second page saves Hermes
+    await user.click(within(first).getByRole('radio', { name: 'Read Later Bot' }));
+    await user.click(within(first).getByRole('button', { name: 'Save' }));
+    await advance(0);
+    const secondSaw = [
+      !!within(second).getByText('Links go to Read Later Bot.'),
+      (within(second).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled,
+      currentIn(second),
+    ];
+    await user.click(within(second).getByRole('radio', { name: 'Hermes' }));
+    await user.click(within(second).getByRole('button', { name: 'Save' }));
+    await advance(0);
     // Then
-    expect(await storage.getItem('local:targetChat')).toEqual({ account: MINH.id, chat: READ_LATER });
+    expect([...secondSaw, currentIn(first)]).toEqual([true, true, 'Read Later Bot', 'Hermes']);
   });
   test('another account starts with no saved chat', async () => {
     // Given: Hermes saved by Linh Vu
