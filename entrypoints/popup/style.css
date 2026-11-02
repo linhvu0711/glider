@@ -1,5 +1,5 @@
 body {
-  background: var(--card);
+  background: var(--surface);
 }
 
 .popup {
@@ -50,7 +50,7 @@ body {
 }
 
 .icon-button:hover {
-  background: #f3f4f6;
+  background: var(--fill);
   color: var(--text);
 }
 
@@ -77,7 +77,7 @@ body {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: #f3f4f6;
+  background: var(--fill);
   color: var(--text-3);
 }
 
@@ -114,7 +114,7 @@ body {
 }
 
 .row-state-blue {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .undo {
@@ -157,7 +157,7 @@ body {
 
 .undo:focus-visible,
 .undo:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -167,7 +167,7 @@ body {
   bottom: -1px;
   width: 100%;
   height: 2px;
-  background: var(--accent);
+  background: var(--accent-text);
   transform-origin: left;
   animation-name: drain;
   animation-timing-function: linear;
@@ -198,11 +198,11 @@ body {
 }
 
 .row-state-green {
-  color: var(--green);
+  color: var(--green-text);
 }
 
 .row-state-red {
-  color: var(--red);
+  color: var(--red-text);
 }
 
 .row-reason {
@@ -257,7 +257,7 @@ body {
 }
 
 .setup-icon {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .setup-title {
