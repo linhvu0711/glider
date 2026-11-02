@@ -32,6 +32,16 @@ export type Opened =
   | { kind: 'limit'; chat: Chat; seconds: number }
   | { kind: 'not-web'; chat: Chat };
 
+/** One popup row, ready to draw. `seconds` and `retryIn` are whole seconds left on the send code's clock. */
+export type Row = { id: LinkId; title: string; address: string; icon: string | null; chat: string } & (
+  | { status: 'waiting'; seconds: number; leftMs: number }
+  | { status: 'sending' | 'sent' | 'undone' }
+  | { status: 'failed'; reason: LinkFailure['reason']; text: string; retryIn: number }
+);
+
+/** What the popup shows: the rows, newest first, the undo window and the send limit. */
+export type SendView = { rows: Row[]; undoMs: number; sendLimit: number };
+
 /** Only http and https pages can be sent; New Tab, `chrome://` and `file://` cannot. */
 export function isWebPage(url: string): boolean {
   try {

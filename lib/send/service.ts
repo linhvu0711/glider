@@ -10,7 +10,9 @@ import {
   type LinkId,
   type Opened,
   type Page,
+  type Row,
   type Sends,
+  type SendView,
 } from './state';
 
 // Local, so the links outlive a Chrome restart. The send service is the only writer of
@@ -44,6 +46,35 @@ function badgeFor(links: Link[], sentAt: number | null, now: number) {
   return { text: '', color: BLUE };
 }
 
+function rowOf(link: Link, now: number): Row {
+  const row = {
+    id: link.id,
+    title: link.page.title,
+    address: addressOf(link.page.url),
+    icon: link.page.icon,
+    chat: link.chat.name,
+  };
+  switch (link.status) {
+    case 'waiting':
+      return {
+        ...row,
+        status: 'waiting',
+        seconds: Math.max(1, Math.ceil((link.sendAt - now) / 1000)),
+        leftMs: Math.max(0, link.sendAt - now),
+      };
+    case 'failed':
+      return {
+        ...row,
+        status: 'failed',
+        reason: link.failure.reason,
+        text: FAILURE_TEXT[link.failure.reason].row(link.chat.name),
+        retryIn: retryIn(link.failure, now),
+      };
+    default:
+      return { ...row, status: link.status };
+  }
+}
+
 function failureOf(e: unknown, now: number): LinkFailure {
   if (!(e instanceof SendError)) return { reason: 'other' };
   const { failure } = e;
@@ -52,22 +83,39 @@ function failureOf(e: unknown, now: number): LinkFailure {
     : { reason: failure.reason };
 }
 
-function noticeOf(chat: string, failure: LinkFailure, now: number): string {
-  switch (failure.reason) {
-    case 'offline':
-      return 'Not sent: no internet.';
-    case 'logged-out':
-      return 'Not sent: you were logged out.';
-    case 'unreachable':
-      return `Can't send to ${chat}. It may be deleted, stopped, or blocked.`;
-    case 'wait':
-      return `Telegram asks to wait ${Math.ceil((failure.retryAt - now) / 1000)} s.`;
-    case 'other':
-      return 'Not sent: something went wrong.';
-    case 'closed':
-      return 'Not sent: Chrome closed first.';
-  }
+function retryIn(failure: LinkFailure, now: number): number {
+  return failure.reason === 'wait' ? Math.max(0, Math.ceil((failure.retryAt - now) / 1000)) : 0;
 }
+
+// What the popup row and the system notice say for each reason, side by side.
+const FAILURE_TEXT: {
+  [R in LinkFailure['reason']]: {
+    row: (chat: string) => string;
+    notice: (chat: string, seconds: number) => string;
+  };
+} = {
+  offline: { row: () => 'Not sent: no internet', notice: () => 'Not sent: no internet.' },
+  'logged-out': {
+    row: () => 'Not sent: you were logged out',
+    notice: () => 'Not sent: you were logged out.',
+  },
+  unreachable: {
+    row: (chat) => `Not sent: can't reach ${chat}`,
+    notice: (chat) => `Can't send to ${chat}. It may be deleted, stopped, or blocked.`,
+  },
+  wait: {
+    row: () => 'Not sent: Telegram asks to wait',
+    notice: (_, seconds) => `Telegram asks to wait ${seconds} s.`,
+  },
+  other: {
+    row: () => 'Not sent: something went wrong',
+    notice: () => 'Not sent: something went wrong.',
+  },
+  closed: {
+    row: () => 'Not sent: Chrome closed first',
+    notice: () => 'Not sent: Chrome closed first.',
+  },
+};
 
 export interface SendService {
   /** Loads the saved links; the worker calls it each time it wakes. */
@@ -78,6 +126,8 @@ export interface SendService {
   /** Sends a failed link at once, with no undo window. */
   retry(id: LinkId): Promise<void>;
   remove(id: LinkId): Promise<void>;
+  /** The popup's rows, newest first, with the undo window and the send limit. */
+  view(): Promise<SendView>;
 }
 
 export function createSendService(telegram: TelegramSend): SendService {
@@ -85,6 +135,7 @@ export function createSendService(telegram: TelegramSend): SendService {
   const timers = new Map<LinkId, ReturnType<typeof setTimeout>>();
   let queue: Promise<unknown> = Promise.resolve();
   let sentAt: number | null = null;
+  let loaded: Promise<void> = Promise.resolve();
 
   // One change at a time, so no write is lost to another.
   function serial<T>(run: () => Promise<T>): Promise<T> {
@@ -131,7 +182,7 @@ export function createSendService(telegram: TelegramSend): SendService {
       type: 'basic',
       iconUrl: browser.runtime.getURL('/icons/128.png'),
       title: 'Glider',
-      message: noticeOf(link.chat.name, failure, Date.now()),
+      message: FAILURE_TEXT[failure.reason].notice(link.chat.name, retryIn(failure, Date.now())),
       contextMessage: addressOf(link.page.url),
     });
   }
@@ -185,7 +236,7 @@ export function createSendService(telegram: TelegramSend): SendService {
 
   return {
     start() {
-      return serial(async () => {
+      loaded = serial(async () => {
         const saved = await sendList.getValue();
         const links = saved.links.filter(
           (link) => link.status !== 'sent' && link.status !== 'undone',
@@ -203,6 +254,7 @@ export function createSendService(telegram: TelegramSend): SendService {
         }
         await browserOpen.setValue(true);
       });
+      return loaded;
     },
 
     open(page) {
@@ -268,6 +320,17 @@ export function createSendService(telegram: TelegramSend): SendService {
         await drop(id);
         await browser.notifications.clear(id);
       });
+    },
+
+    // Not behind the queue, so a slow account check never stops the countdown.
+    async view() {
+      await loaded;
+      const now = Date.now();
+      return {
+        rows: state.links.map((link) => rowOf(link, now)),
+        undoMs: UNDO_MS,
+        sendLimit: SEND_LIMIT,
+      };
     },
   };
 }
