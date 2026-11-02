@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { browser, type Browser } from 'wxt/browser';
-import { connectChats } from '../../lib/chats/connection';
+import { connectChats } from '../../lib/target-chat';
 import { connectSend } from '../../lib/send/connection';
 import type { Page } from '../../lib/send/state';
 import Popup from './Popup';

@@ -1,13 +1,12 @@
 import { browser } from 'wxt/browser';
-import { chatsGroup } from '../lib/chats/connection';
 import { deviceLabel, deviceName } from '../lib/device';
 import { serveLogin } from '../lib/login/connection';
 import { createLoginService } from '../lib/login/service';
 import { serve, served } from '../lib/messages';
 import { sendGroup } from '../lib/send/connection';
 import { createSendService } from '../lib/send/service';
+import { chatsGroup, createChatList } from '../lib/target-chat';
 import { telegramConfig } from '../lib/telegram/config';
-import type { TelegramChats } from '../lib/telegram/chats';
 import {
   createFakeAuth,
   createFakeChats,
@@ -40,21 +39,25 @@ export default defineBackground({
       (made ??= createMtcuteClient(telegramConfig(), device, browser.runtime.getManifest().version));
     const client: MtcuteClient = { get: () => mtcute().get(), reset: () => mtcute().reset() };
 
-    // Set with each login service, so the chat list follows the same fake scenario.
-    let chats: TelegramChats | null = null;
+    const telegramSend = fake ? createFakeSend() : createMtcuteSend(client);
+    // Made only in the fake build, so the real build drops the fake.
+    const fakeChats = fake ? createFakeChats({ scenario: 'default' }) : null;
+    const chats = fakeChats ?? createMtcuteChats(client);
 
-    const sender = createSendService(fake ? createFakeSend() : createMtcuteSend(client));
-    serve([served(sendGroup, sender), served(chatsGroup, () => chats)]);
+    const sender = createSendService(telegramSend);
+    serve([
+      served(sendGroup, sender),
+      served(chatsGroup, createChatList(() => telegramSend.account(), chats)),
+    ]);
     void sender.start();
 
     serveLogin(async (scenarioName) => {
       if (fake) {
         if (scenarioName !== undefined) await fakeSession.removeValue();
         const scenario = isFakeScenario(scenarioName) ? scenarioName : 'default';
-        chats = createFakeChats({ scenario });
+        fakeChats?.setScenario(scenario);
         return createLoginService(createFakeAuth({ scenario }), deviceName(device));
       }
-      chats = createMtcuteChats(client);
       return createLoginService(createMtcuteAuth(client), deviceName(device));
     }, { fake });
   },

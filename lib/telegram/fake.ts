@@ -175,10 +175,17 @@ export const FAKE_PHOTO =
 
 const CHATS_SLOW_MS = 5_000;
 
+export type FakeChats = TelegramChats & { setScenario(scenario: FakeScenario): void };
+
 // `chats-slow` and `chats-error` log in by phone like `default`; only the chat list differs.
-export function createFakeChats({ scenario }: { scenario: FakeScenario }): TelegramChats {
+export function createFakeChats(options: { scenario: FakeScenario }): FakeChats {
+  let scenario = options.scenario;
   let lists = 0;
   return {
+    setScenario(next) {
+      scenario = next;
+      lists = 0;
+    },
     async list() {
       lists += 1;
       if (scenario === 'chats-slow') await wait(CHATS_SLOW_MS);
