@@ -94,6 +94,16 @@ describe('header', () => {
       ),
     ).toBeTruthy();
   });
+  test('has no theme control', () => {
+    // Given: <App /> rendered with no connection yet
+    // When
+    render(<App />);
+    // Then
+    expect({
+      text: screen.queryByText(/theme|appearance|dark mode|light mode/i),
+      radios: screen.queryAllByRole('radio'),
+    }).toEqual({ text: null, radios: [] });
+  });
 });
 
 describe('QR login', () => {
@@ -108,6 +118,19 @@ describe('QR login', () => {
     expect(fullText('Go to Settings → Devices → Link Desktop Device.')).toBeTruthy();
     expect(fullText('Point your phone at this code.')).toBeTruthy();
     expect(screen.getByText('New code in 0:30')).toBeTruthy();
+  });
+
+  test('shows the QR code on a white square', async () => {
+    // Given: fake scenario default, the first code arrived
+    renderApp('default');
+    await advance(0);
+    // When
+    const code = qrBox().querySelector('svg');
+    // Then
+    expect({
+      paper: code?.parentElement?.className,
+      white: code?.querySelector('path')?.getAttribute('fill'),
+    }).toEqual({ paper: 'qr-paper', white: '#FFFFFF' });
   });
 
   test('counts down and shows a fresh code at 0', async () => {

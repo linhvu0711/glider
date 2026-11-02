@@ -1,16 +1,65 @@
 :root {
+  color-scheme: light dark;
   --bg: #f7f8fa;
   --card: #fff;
+  --surface: #fff;
+  --control: #fff;
+  --fill: #f3f4f6;
+  --fill-hover: #f9fafb;
   --border: #e5e7eb;
+  --border-control: #e5e7eb;
   --text: #111827;
   --text-2: #4b5563;
   --text-3: #6b7280;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
+  --accent-text: #2563eb;
+  --accent-text-hover: #1d4ed8;
+  --accent-soft: #eff6ff;
   --red: #dc2626;
+  --red-hover: #dc2626;
+  --red-text: #dc2626;
   --green: #16a34a;
+  --green-text: #16a34a;
+  --done-text: #16a34a;
+  --done-bg: #f0fdf4;
+  --on-fill: #fff;
+  --backdrop: rgb(17 24 39 / 40%);
+  --qr-paper: #fff;
   --radius-card: 12px;
   --radius-control: 8px;
+}
+
+/* The Mac's look picks the colors: Chrome tells the page, and the page follows at once. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --card: #1a1b1f;
+    --surface: #1e1f24;
+    --control: #232429;
+    --fill: #26272c;
+    --fill-hover: #2c2e34;
+    --border: #2a2c31;
+    --border-control: #3b3e45;
+    --text: #ececef;
+    --text-2: #a4a7af;
+    /* Lighter than the mockup's #80838c, so small text keeps 4.5:1 on every dark surface. */
+    --text-3: #8d9098;
+    --accent: #2563eb;
+    --accent-hover: #3b82f6;
+    --accent-text: #60a5fa;
+    --accent-text-hover: #93c5fd;
+    --accent-soft: rgba(59,130,246,.14);
+    --red: #dc2626;
+    --red-hover: #ef4444;
+    --red-text: #f87171;
+    --green: #16a34a;
+    --green-text: #4ade80;
+    --done-text: #86efac;
+    --done-bg: rgba(34,197,94,.13);
+    --on-fill: #fff;
+    --backdrop: rgba(0,0,0,.55);
+  }
 }
 
 * {
@@ -36,12 +85,12 @@ body {
   border: 0;
   background: none;
   font: inherit;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
 }
 
 .link:hover {
-  color: var(--accent-hover);
+  color: var(--accent-text-hover);
   text-decoration: underline;
 }
 
@@ -52,7 +101,7 @@ body {
   flex: none;
   border-radius: 50%;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   font-weight: 600;
 }
 
@@ -62,7 +111,7 @@ body {
   border: 0;
   border-radius: var(--radius-control);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -80,9 +129,9 @@ body {
 .button-plain {
   height: 40px;
   padding: 0 16px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-control);
-  background: var(--card);
+  background: var(--control);
   color: var(--text);
   font: inherit;
   font-weight: 500;
@@ -90,7 +139,7 @@ body {
 }
 
 .button-plain:hover {
-  background: #f9fafb;
+  background: var(--fill-hover);
 }
 
 .chat-avatar {
@@ -146,9 +195,9 @@ svg + span,
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: 4px;
-  background: #fff;
+  background: var(--control);
   color: var(--text-2);
   font-family: inherit;
   font-size: 12px;
