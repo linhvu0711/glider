@@ -3,7 +3,7 @@ import type { Account, QrCode } from '../telegram/auth';
 export type LoginStep =
   | { step: 'checking' }
   | { step: 'qr'; code: QrCode | null; expired: boolean }
-  | { step: 'phone'; error: 'bad-phone' | null; busy: boolean }
+  | { step: 'phone'; error: string | null; busy: boolean }
   | {
       step: 'code';
       phone: string;
@@ -28,7 +28,7 @@ export type LoginCommand =
   | { type: 'newQr' }
   | { type: 'usePhone' }
   | { type: 'useQr' }
-  | { type: 'sendCode'; phone: string }
+  | { type: 'sendCode'; country: string; number: string }
   | { type: 'changeNumber' }
   | { type: 'submitCode'; code: string }
   | { type: 'resendCode' }

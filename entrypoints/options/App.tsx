@@ -4,7 +4,6 @@ import iconUrl from '../../assets/icon.svg';
 import iconDataUrl from '../../assets/icon.svg?inline';
 import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
-import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
 import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
@@ -207,7 +206,7 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
           draft={draft}
           onDraft={setDraft}
           busy={login.busy}
-          serverError={login.error}
+          error={login.error}
           send={send}
         />
       )}
@@ -310,28 +309,18 @@ function PhoneStep({
   draft,
   onDraft,
   busy,
-  serverError,
+  error,
   send,
 }: {
   draft: { country: string; number: string };
   onDraft: (draft: { country: string; number: string }) => void;
   busy: boolean;
-  serverError: 'bad-phone' | null;
+  error: string | null;
   send: Send;
 }) {
-  const [localError, setLocalError] = useState<string | null>(null);
-  const error =
-    localError ??
-    (serverError === 'bad-phone'
-      ? 'Telegram does not know this number. Check it and try again.'
-      : null);
-
   function submit(event: FormEvent) {
     event.preventDefault();
-    const result = checkPhone(draft.country, draft.number);
-    if (!result.ok) return setLocalError(result.error);
-    setLocalError(null);
-    send({ type: 'sendCode', phone: result.phone });
+    send({ type: 'sendCode', country: draft.country, number: draft.number });
   }
 
   return (

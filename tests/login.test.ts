@@ -256,3 +256,134 @@ describe('logged out notice', () => {
     ]);
   });
 });
+
+describe('phone login', () => {
+  async function onPhoneStep() {
+    const started = start('default');
+    started.service.send({ type: 'hello' });
+    await advance(0);
+    started.service.send({ type: 'usePhone' });
+    return started;
+  }
+
+  async function onCodeStep(number = '912 345 678') {
+    const started = await onPhoneStep();
+    started.service.send({ type: 'sendCode', country: '+84', number });
+    await advance(0);
+    return started;
+  }
+
+  async function onPasswordStep() {
+    const started = await onCodeStep('900000002');
+    started.service.send({ type: 'submitCode', code: '12345' });
+    await advance(0);
+    return started;
+  }
+
+  test('asks for the code after a good number', async () => {
+    // Given: on the phone step
+    const { service, views } = await onPhoneStep();
+    // When
+    service.send({ type: 'sendCode', country: '+84', number: '912 345 678' });
+    await advance(0);
+    // Then
+    expect(lastLogin(views)).toEqual({
+      step: 'code',
+      phone: '84912345678',
+      length: 5,
+      error: null,
+      busy: false,
+    });
+  });
+
+  test('says the number is too short and asks Telegram nothing', async () => {
+    // Given: on the phone step
+    const { auth, service, views } = await onPhoneStep();
+    const sendCode = vi.spyOn(auth, 'sendCode');
+    // When
+    service.send({ type: 'sendCode', country: '+84', number: '12' });
+    await advance(0);
+    // Then
+    expect([lastLogin(views), sendCode.mock.calls.length]).toEqual([
+      { step: 'phone', error: 'This number is too short.', busy: false },
+      0,
+    ]);
+  });
+
+  test('says Telegram does not know the number', async () => {
+    // Given: on the phone step
+    const { service, views } = await onPhoneStep();
+    // When
+    service.send({ type: 'sendCode', country: '+84', number: '999 999 999' });
+    await advance(0);
+    // Then
+    expect(lastLogin(views)).toEqual({
+      step: 'phone',
+      error: 'Telegram does not know this number. Check it and try again.',
+      busy: false,
+    });
+  });
+
+  test('says the code is wrong', async () => {
+    // Given: the code was sent to +84 912 345 678
+    const { service, views } = await onCodeStep();
+    // When
+    service.send({ type: 'submitCode', code: '11111' });
+    await advance(0);
+    // Then
+    expect(lastLogin(views)).toEqual({
+      step: 'code',
+      phone: '84912345678',
+      length: 5,
+      error: 'wrong',
+      busy: false,
+    });
+  });
+
+  test('says the code expired', async () => {
+    // Given: the code was sent to +84 912 345 678
+    const { service, views } = await onCodeStep();
+    // When
+    service.send({ type: 'submitCode', code: '00000' });
+    await advance(0);
+    // Then
+    const login = lastLogin(views);
+    expect(login?.step === 'code' ? login.error : login?.step).toBe('expired');
+  });
+
+  test('logs in with the right code', async () => {
+    // Given: the code was sent to +84 912 345 678
+    const { service, views } = await onCodeStep();
+    // When
+    service.send({ type: 'submitCode', code: '12345' });
+    await advance(0);
+    // Then
+    expect(lastLogin(views)).toEqual({
+      step: 'done',
+      account: { id: 7101, name: 'Minh Anh', initials: 'MA' },
+      device: 'Chromium on Linux',
+      logout: 'idle',
+    });
+  });
+
+  test('says the 2-step password is wrong', async () => {
+    // Given: the account of +84 900 000 002 asks for its 2-step password
+    const { service, views } = await onPasswordStep();
+    // When
+    service.send({ type: 'submitPassword', password: 'nope' });
+    await advance(0);
+    // Then
+    expect(lastLogin(views)).toEqual({ step: 'password', error: 'wrong', busy: false });
+  });
+
+  test('logs in with the right 2-step password', async () => {
+    // Given: the account of +84 900 000 002 asks for its 2-step password
+    const { service, views } = await onPasswordStep();
+    // When
+    service.send({ type: 'submitPassword', password: 'glider-pass' });
+    await advance(0);
+    // Then
+    const login = lastLogin(views);
+    expect(login?.step === 'done' ? login.account.name : login?.step).toBe('Tuan Vu');
+  });
+});
