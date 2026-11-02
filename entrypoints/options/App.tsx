@@ -4,7 +4,6 @@ import iconUrl from '../../assets/icon.svg';
 import iconDataUrl from '../../assets/icon.svg?inline';
 import type { LoginConnection } from '../../lib/login/connection';
 import type { LoginCommand, LoginStep, LoginView } from '../../lib/login/state';
-import { checkPhone } from '../../lib/phone';
 import type { Account, QrCode } from '../../lib/telegram/auth';
 import type { Chat, ChatId, ChatKind, TelegramChats } from '../../lib/telegram/chats';
 import { targetChat, targetChatFor, type TargetChat } from '../../lib/target-chat';
@@ -30,16 +29,6 @@ function useLoginView(connection: LoginConnection | undefined): LoginView | null
   return view;
 }
 
-// The account step 2 works for. A session check (another tab's hello) is not a log out,
-// so the account stays through `checking`.
-function useChatAccount(login: LoginStep | undefined): Account | null {
-  const [account, setAccount] = useState<Account | null>(null);
-  const next =
-    login?.step === 'done' ? login.account : login?.step === 'checking' ? account : null;
-  if (next !== account) setAccount(next);
-  return next;
-}
-
 export default function App({
   connection,
   chats,
@@ -48,7 +37,7 @@ export default function App({
   chats?: TelegramChats;
 }) {
   const view = useLoginView(connection);
-  const chatAccount = useChatAccount(view?.login);
+  const chatAccount = view?.account ?? null;
   return (
     <div className="page">
       <header className="header">
@@ -160,10 +149,7 @@ function LoggedOutBanner({ send }: { send: Send }) {
       <button
         type="button"
         className="link"
-        onClick={() => {
-          send({ type: 'dismissNotice' });
-          send({ type: 'newQr' });
-        }}
+        onClick={() => send({ type: 'logInAgain' })}
       >
         Log in again
       </button>
@@ -210,7 +196,7 @@ function LoginCard({ login, send }: { login: LoginStep; send: Send }) {
           draft={draft}
           onDraft={setDraft}
           busy={login.busy}
-          serverError={login.error}
+          error={login.error}
           send={send}
         />
       )}
@@ -313,28 +299,18 @@ function PhoneStep({
   draft,
   onDraft,
   busy,
-  serverError,
+  error,
   send,
 }: {
   draft: { country: string; number: string };
   onDraft: (draft: { country: string; number: string }) => void;
   busy: boolean;
-  serverError: 'bad-phone' | null;
+  error: string | null;
   send: Send;
 }) {
-  const [localError, setLocalError] = useState<string | null>(null);
-  const error =
-    localError ??
-    (serverError === 'bad-phone'
-      ? 'Telegram does not know this number. Check it and try again.'
-      : null);
-
   function submit(event: FormEvent) {
     event.preventDefault();
-    const result = checkPhone(draft.country, draft.number);
-    if (!result.ok) return setLocalError(result.error);
-    setLocalError(null);
-    send({ type: 'sendCode', phone: result.phone });
+    send({ type: 'sendCode', country: draft.country, number: draft.number });
   }
 
   return (

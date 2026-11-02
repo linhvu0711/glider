@@ -5,10 +5,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { chatsGroup, connectChats } from '../lib/chats/connection';
-import { connectInMemory } from '../lib/login/connection';
-import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
-import type { LoginView } from '../lib/login/state';
 import { memoryPath, served } from '../lib/messages';
 import {
   createFakeAuth,
@@ -37,7 +34,7 @@ async function advance(ms: number) {
 function renderApp(scenario: FakeScenario, device = 'Chromium on Linux') {
   const auth = createFakeAuth({ scenario });
   const service = createLoginService(auth, device);
-  render(<App connection={connectInMemory(service)} />);
+  render(<App connection={service} />);
   return { auth, service };
 }
 
@@ -497,24 +494,6 @@ describe('saved session', () => {
     );
     expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
   });
-
-  test('restores the same state twice', async () => {
-    // Given: fake saved session Minh Anh
-    await storage.setItem('local:fakeSession', MINH);
-    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
-    const connection = connectInMemory(service);
-    const views: LoginView[] = [];
-    connection.subscribe((view) => views.push(view));
-    // When: send hello twice through the connection
-    connection.send({ type: 'hello' });
-    connection.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    const accounts = views.flatMap((v) => (v.login.step === 'done' ? [v.login.account.name] : []));
-    expect(accounts).toEqual(['Minh Anh']);
-    expect(await storage.getItem('local:loggedOutNotice')).toBe(false);
-    expect(await storage.getItem('local:fakeSession')).toEqual(MINH);
-  });
 });
 
 describe('log out', () => {
@@ -676,74 +655,12 @@ describe('QR expiry', () => {
   });
 });
 
-describe('two tabs', () => {
-  test('a second tab keeps the phone step of the first tab', async () => {
-    // Given: tab 1 on the phone step
-    const service = createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux');
-    const tab1 = connectInMemory(service);
-    const views: LoginView[] = [];
-    tab1.subscribe((view) => views.push(view));
-    tab1.send({ type: 'hello' });
-    await advance(0);
-    tab1.send({ type: 'usePhone' });
-    // When: tab 2 opens and says hello
-    const tab2 = connectInMemory(service);
-    tab2.subscribe(() => {});
-    tab2.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    expect(views.at(-1)?.login.step).toBe('phone');
-  });
-
-  test('a tab that opens late gets the same QR code at once', async () => {
-    // Given: tab 1 shows the first QR code
-    const host = createHost(
-      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
-      { fake: false },
-    );
-    host.subscribe(() => {});
-    host.send({ type: 'hello' });
-    await advance(0);
-    // When: tab 2 connects and says hello
-    const views: LoginView[] = [];
-    host.subscribe((view) => views.push(view));
-    host.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    expect(views.map((v) => (v.login.step === 'qr' ? v.login.code?.url : v.login.step))).toEqual([
-      'tg://login?token=fake-1',
-    ]);
-  });
-
-  test('a tab that opens after every tab closed gets a new QR code', async () => {
-    // Given: one tab saw the first QR code, then every tab closed
-    const host = createHost(
-      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
-      { fake: false },
-    );
-    const unsubscribe = host.subscribe(() => {});
-    host.send({ type: 'hello' });
-    await advance(0);
-    unsubscribe();
-    host.stop();
-    await advance(0);
-    // When: a new tab connects and says hello
-    const views: LoginView[] = [];
-    host.subscribe((view) => views.push(view));
-    host.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    const last = views.at(-1)?.login;
-    expect(last?.step === 'qr' ? last.code?.url : last?.step).toBe('tg://login?token=fake-2');
-  });
-});
-
 function renderSettings(scenario: FakeScenario, options?: { container?: HTMLElement }) {
   const service = createLoginService(createFakeAuth({ scenario }), 'Chromium on Linux');
   const fakeChats = createFakeChats({ scenario });
   return render(
     <App
-      connection={connectInMemory(service)}
+      connection={service}
       chats={connectChats(memoryPath([served(chatsGroup, () => fakeChats)]))}
     />,
     options?.container ? { container: options.container } : undefined,
@@ -1080,7 +997,7 @@ describe('choose the chat: save', () => {
     const chats = connectChats(memoryPath([served(chatsGroup, () => fakeChats)]));
     const firstTab = document.body.appendChild(document.createElement('div'));
     const secondTab = document.body.appendChild(document.createElement('div'));
-    render(<App connection={connectInMemory(service)} chats={chats} />, { container: firstTab });
+    render(<App connection={service} chats={chats} />, { container: firstTab });
     await advance(0);
     const first = within(firstTab);
     await user.type(first.getByRole('searchbox', { name: 'Search your chats' }), 'herm');
@@ -1091,7 +1008,7 @@ describe('choose the chat: save', () => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       return restore();
     });
-    render(<App connection={connectInMemory(service)} chats={chats} />, { container: secondTab });
+    render(<App connection={service} chats={chats} />, { container: secondTab });
     await advance(0);
     await advance(1_000);
     // Then

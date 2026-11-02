@@ -1,4 +1,5 @@
 import { storage } from 'wxt/utils/storage';
+import { checkPhone } from '../phone';
 import { AuthError, type Account, type TelegramAuth } from '../telegram/auth';
 import type { LoginCommand, LoginStep, LoginView } from './state';
 
@@ -15,6 +16,8 @@ const loggedOutNotice = storage.defineItem<boolean>('local:loggedOutNotice', {
 
 // Telegram's codes live 30 s, so 5 codes are about 2.5 minutes of waiting.
 const MAX_QR_CODES = 5;
+
+const UNKNOWN_NUMBER = 'Telegram does not know this number. Check it and try again.';
 
 function isBusy(login: LoginStep): boolean {
   switch (login.step) {
@@ -44,14 +47,19 @@ function kindOf(e: unknown): AuthError['kind'] {
 }
 
 export function createLoginService(auth: TelegramAuth, device: string): LoginService {
-  let view: LoginView = { login: { step: 'checking' }, notice: false };
+  let view: LoginView = { login: { step: 'checking' }, notice: false, account: null };
   const listeners = new Set<(view: LoginView) => void>();
   let qr: AbortController | null = null;
 
   let checking = false;
 
-  function publish(next: LoginView) {
-    view = next;
+  function accountOf(login: LoginStep): Account | null {
+    if (login.step === 'done') return login.account;
+    return login.step === 'checking' ? view.account : null;
+  }
+
+  function publish(next: Omit<LoginView, 'account'>) {
+    view = { ...next, account: accountOf(next.login) };
     for (const listener of listeners) listener(view);
   }
 
@@ -136,7 +144,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
       const { length } = await auth.sendCode(phone);
       show({ step: 'code', phone, length, error: null, busy: false });
     } catch (e) {
-      if (kindOf(e) === 'bad-phone') show({ step: 'phone', error: 'bad-phone', busy: false });
+      if (kindOf(e) === 'bad-phone') show({ step: 'phone', error: UNKNOWN_NUMBER, busy: false });
       else show({ step: 'offline' });
     }
   }
@@ -183,7 +191,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   return {
     send(command) {
       if (command.type === 'hello') return void hello();
-      if (command.type === 'ping' || isBusy(view.login)) return;
+      if (isBusy(view.login)) return;
       switch (command.type) {
         case 'usePhone':
           stopQr();
@@ -202,12 +210,18 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
         case 'retry':
           void hello();
           break;
-        case 'dismissNotice':
+        case 'logInAgain':
           void setNotice(false);
+          startQr();
           break;
-        case 'sendCode':
-          void sendCode(command.phone);
+        case 'sendCode': {
+          const result = checkPhone(command.country, command.number);
+          if (result.ok) void sendCode(result.phone);
+          else if (view.login.step === 'phone') {
+            show({ step: 'phone', error: result.error, busy: false });
+          }
           break;
+        }
         case 'resendCode':
           if (view.login.step === 'code') void sendCode(view.login.phone);
           break;
