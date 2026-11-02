@@ -35,4 +35,4 @@ export type LoginCommand =
   | { type: 'submitPassword'; password: string }
   | { type: 'retry' }
   | { type: 'logOut' }
-  | { type: 'dismissNotice' };
+  | { type: 'logInAgain' };

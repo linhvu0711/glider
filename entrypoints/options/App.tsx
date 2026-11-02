@@ -160,10 +160,7 @@ function LoggedOutBanner({ send }: { send: Send }) {
       <button
         type="button"
         className="link"
-        onClick={() => {
-          send({ type: 'dismissNotice' });
-          send({ type: 'newQr' });
-        }}
+        onClick={() => send({ type: 'logInAgain' })}
       >
         Log in again
       </button>

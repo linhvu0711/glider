@@ -202,8 +202,9 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
         case 'retry':
           void hello();
           break;
-        case 'dismissNotice':
+        case 'logInAgain':
           void setNotice(false);
+          startQr();
           break;
         case 'sendCode':
           void sendCode(command.phone);

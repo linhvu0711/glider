@@ -238,3 +238,21 @@ describe('log out', () => {
     expect(login?.step === 'done' ? login.logout : login?.step).toBe('busy');
   });
 });
+
+describe('logged out notice', () => {
+  test('Log in again clears the notice and shows a new code', async () => {
+    // Given: the session ended, so the notice and the first code show
+    const { service, views } = start('revoked');
+    service.send({ type: 'hello' });
+    await advance(0);
+    // When
+    service.send({ type: 'logInAgain' });
+    await advance(0);
+    // Then
+    expect([views.at(-1)?.notice, qrUrl(views), await storage.getItem('local:loggedOutNotice')]).toEqual([
+      false,
+      'tg://login?token=fake-2',
+      false,
+    ]);
+  });
+});
