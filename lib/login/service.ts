@@ -191,7 +191,7 @@ export function createLoginService(auth: TelegramAuth, device: string): LoginSer
   return {
     send(command) {
       if (command.type === 'hello') return void hello();
-      if (command.type === 'ping' || isBusy(view.login)) return;
+      if (isBusy(view.login)) return;
       switch (command.type) {
         case 'usePhone':
           stopQr();

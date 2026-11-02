@@ -28,8 +28,7 @@ export type LoginView = {
 };
 
 export type LoginCommand =
-  | { type: 'hello'; fake?: string }
-  | { type: 'ping' }
+  | { type: 'hello' }
   | { type: 'newQr' }
   | { type: 'usePhone' }
   | { type: 'useQr' }

@@ -1,8 +1,7 @@
 import { browser } from 'wxt/browser';
 import { chatsGroup } from '../lib/chats/connection';
 import { deviceLabel, deviceName } from '../lib/device';
-import { servePort } from '../lib/login/connection';
-import { createHost } from '../lib/login/host';
+import { serveLogin } from '../lib/login/connection';
 import { createLoginService } from '../lib/login/service';
 import { serve, served } from '../lib/messages';
 import { sendGroup } from '../lib/send/connection';
@@ -48,7 +47,7 @@ export default defineBackground({
     serve([served(sendGroup, sender), served(chatsGroup, () => chats)]);
     void sender.start();
 
-    const host = createHost(async (scenarioName) => {
+    serveLogin(async (scenarioName) => {
       if (fake) {
         if (scenarioName !== undefined) await fakeSession.removeValue();
         const scenario = isFakeScenario(scenarioName) ? scenarioName : 'default';
@@ -58,16 +57,5 @@ export default defineBackground({
       chats = createMtcuteChats(client);
       return createLoginService(createMtcuteAuth(client), deviceName(device));
     }, { fake });
-
-    let ports = 0;
-    browser.runtime.onConnect.addListener((port) => {
-      if (port.name !== 'login') return;
-      ports += 1;
-      servePort(port, host);
-      port.onDisconnect.addListener(() => {
-        ports -= 1;
-        if (ports === 0) host.stop();
-      });
-    });
   },
 });

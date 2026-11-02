@@ -5,9 +5,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { storage } from 'wxt/utils/storage';
 import App from '../entrypoints/options/App';
 import { chatsGroup, connectChats } from '../lib/chats/connection';
-import { createHost } from '../lib/login/host';
 import { createLoginService } from '../lib/login/service';
-import type { LoginView } from '../lib/login/state';
 import { memoryPath, served } from '../lib/messages';
 import {
   createFakeAuth,
@@ -654,50 +652,6 @@ describe('QR expiry', () => {
     // Then
     expect(qrBox().querySelector('svg')).toBeTruthy();
     expect(screen.getByText('New code in 0:02')).toBeTruthy();
-  });
-});
-
-describe('two tabs', () => {
-  test('a tab that opens late gets the same QR code at once', async () => {
-    // Given: tab 1 shows the first QR code
-    const host = createHost(
-      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
-      { fake: false },
-    );
-    host.subscribe(() => {});
-    host.send({ type: 'hello' });
-    await advance(0);
-    // When: tab 2 connects and says hello
-    const views: LoginView[] = [];
-    host.subscribe((view) => views.push(view));
-    host.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    expect(views.map((v) => (v.login.step === 'qr' ? v.login.code?.url : v.login.step))).toEqual([
-      'tg://login?token=fake-1',
-    ]);
-  });
-
-  test('a tab that opens after every tab closed gets a new QR code', async () => {
-    // Given: one tab saw the first QR code, then every tab closed
-    const host = createHost(
-      async () => createLoginService(createFakeAuth({ scenario: 'default' }), 'Chromium on Linux'),
-      { fake: false },
-    );
-    const unsubscribe = host.subscribe(() => {});
-    host.send({ type: 'hello' });
-    await advance(0);
-    unsubscribe();
-    host.stop();
-    await advance(0);
-    // When: a new tab connects and says hello
-    const views: LoginView[] = [];
-    host.subscribe((view) => views.push(view));
-    host.send({ type: 'hello' });
-    await advance(0);
-    // Then
-    const last = views.at(-1)?.login;
-    expect(last?.step === 'qr' ? last.code?.url : last?.step).toBe('tg://login?token=fake-2');
   });
 });
 
