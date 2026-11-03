@@ -78,6 +78,21 @@ describe('session check', () => {
     ]);
   });
 
+  test('forgets the saved account when the session ended', async () => {
+    // Given: fake saved session Minh Anh, scenario revoked
+    await storage.setItem('local:fakeSession', MINH);
+    const { service, views } = start('revoked');
+    // When
+    service.send({ type: 'hello' });
+    await advance(0);
+    // Then
+    expect([views.at(-1)?.notice, qrUrl(views), await storage.getItem('local:fakeSession')]).toEqual([
+      true,
+      'tg://login?token=fake-1',
+      null,
+    ]);
+  });
+
   test('says Telegram cannot be reached when the session check fails', async () => {
     // Given: fake saved session Minh Anh, scenario offline
     await storage.setItem('local:fakeSession', MINH);
@@ -204,6 +219,24 @@ describe('log out', () => {
     ]);
   });
 
+  test('log out of an ended session forgets the account and shows a new code', async () => {
+    // Given: Minh Anh logged in, then Telegram says the session ended
+    await storage.setItem('local:fakeSession', MINH);
+    const { auth, service, views } = start('default');
+    service.send({ type: 'hello' });
+    await advance(0);
+    auth.setScenario('revoked');
+    // When
+    service.send({ type: 'logOut' });
+    await advance(0);
+    // Then
+    expect([qrUrl(views), await storage.getItem('local:fakeSession'), views.at(-1)?.notice]).toEqual([
+      'tg://login?token=fake-1',
+      null,
+      false,
+    ]);
+  });
+
   test('stays logged in and says so when log out cannot reach Telegram', async () => {
     // Given: Minh Anh logged in, then Telegram cannot be reached
     await storage.setItem('local:fakeSession', MINH);
@@ -307,6 +340,19 @@ describe('phone login', () => {
     expect([lastLogin(views), sendCode.mock.calls.length]).toEqual([
       { step: 'phone', error: 'This number is too short.', busy: false },
       0,
+    ]);
+  });
+
+  test('ignores a code before one was sent', async () => {
+    // Given: on the phone step; no code sent
+    const { service, views } = await onPhoneStep();
+    // When
+    service.send({ type: 'submitCode', code: '12345' });
+    await advance(0);
+    // Then
+    expect([lastLogin(views)?.step, await storage.getItem('local:fakeSession')]).toEqual([
+      'phone',
+      null,
     ]);
   });
 

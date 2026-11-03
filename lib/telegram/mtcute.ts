@@ -204,7 +204,7 @@ function deleteDatabase(): Promise<void> {
 
 export interface MtcuteClient {
   get(): TelegramClient;
-  /** Deletes the saved session so the next login starts clean (a session that ended from outside). */
+  /** Deletes the saved session so the next login starts clean. The login code asks for it through forget when a session ended. */
   reset(): Promise<void>;
 }
 
@@ -230,10 +230,7 @@ export function createMtcuteClient(
 }
 
 export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
-  let phone = '';
-  let phoneCodeHash = '';
   const tg = () => client.get();
-  const resetSession = () => client.reset();
 
   async function call<T>(run: (tg: TelegramClient, signal: AbortSignal) => Promise<T>) {
     try {
@@ -255,24 +252,17 @@ export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
   }
 
   return {
-    async restore() {
-      let hadUser = false;
-      try {
-        const t = tg();
+    restore() {
+      return call(async (t, abortSignal) => {
         await t.prepare();
         if ((await t.storage.self.fetch()) === null) return null;
-        hadUser = true;
         const [user] = await t.call(
           { _: 'users.getUsers', id: [{ _: 'inputUserSelf' }] },
-          { abortSignal: AbortSignal.timeout(TIMEOUT_MS) },
+          { abortSignal },
         );
         if (user?._ !== 'user') throw new AuthError('session-ended');
         return toAccount(user);
-      } catch (e) {
-        const error = toAuthError(e);
-        if (error.kind === 'session-ended' && hadUser) await resetSession();
-        throw error;
-      }
+      });
     },
 
     async loginQr(onCode, signal) {
@@ -304,16 +294,14 @@ export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
     async sendCode(number) {
       const sent = await call((t, abortSignal) => t.sendCode({ phone: number, abortSignal }));
       if (!('phoneCodeHash' in sent)) throw new AuthError('offline');
-      phone = number;
-      phoneCodeHash = sent.phoneCodeHash;
-      return { length: sent.length };
+      return { phone: number, length: sent.length, hash: sent.phoneCodeHash };
     },
 
-    submitCode(code) {
+    submitCode(sent, code) {
       return finishLogin(
         tg().signIn({
-          phone,
-          phoneCodeHash,
+          phone: sent.phone,
+          phoneCodeHash: sent.hash,
           phoneCode: code,
           abortSignal: AbortSignal.timeout(TIMEOUT_MS),
         }),
@@ -326,13 +314,10 @@ export function createMtcuteAuth(client: MtcuteClient): TelegramAuth {
     },
 
     async logOut() {
-      try {
-        await call((t) => t.logOut());
-      } catch (e) {
-        if (!(e instanceof AuthError && e.kind === 'session-ended')) throw e;
-        await resetSession();
-      }
+      await call((t) => t.logOut());
     },
+
+    forget: () => client.reset(),
   };
 }
 

@@ -1,8 +1,10 @@
 import { Chat, Long, MtArgumentError, MtPeerNotFoundError, tl, User } from '@mtcute/web';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { AuthError, QrCode } from '../lib/telegram/auth';
 import type { ChatId } from '../lib/telegram/chats';
 import type { SendError } from '../lib/telegram/send';
 import {
+  createMtcuteAuth,
   createMtcuteChats,
   createMtcuteSend,
   mtcuteClientOptions,
@@ -324,5 +326,301 @@ describe('mtcute send failures', () => {
       .catch((e: SendError) => e.failure);
     // Then
     expect([failure, calls]).toEqual([{ reason: 'other' }, ['start']]);
+  });
+});
+
+// A stub client for login: `tg` holds the client calls a case needs; `resets` counts deleted sessions.
+function authStub(tg: object) {
+  let resets = 0;
+  const stub = {
+    get: () => tg,
+    reset: async () => {
+      resets += 1;
+    },
+  } as unknown as MtcuteClient;
+  return { stub, resets: () => resets };
+}
+
+function kindOf(promise: Promise<unknown>): Promise<string> {
+  return promise.then(
+    () => 'resolved',
+    (e: AuthError) => e.kind,
+  );
+}
+
+// A QR login that never shows a code and stops when its signal aborts, keeping the reason.
+function waitingQr() {
+  let reason: unknown;
+  const tg = {
+    signInQr: (params: { abortSignal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        params.abortSignal.addEventListener('abort', () => {
+          reason = params.abortSignal.reason;
+          reject(reason);
+        });
+      }),
+  };
+  return { tg, reason: () => reason };
+}
+
+const SAVED_SELF = {
+  prepare: async () => {},
+  storage: { self: { fetch: async () => ({ userId: 7100 }) } },
+};
+
+describe('mtcute login', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('finds no account when no session is saved', async () => {
+    // Given: a client with no saved user
+    const { stub } = authStub({
+      prepare: async () => {},
+      storage: { self: { fetch: async () => null } },
+    });
+    // When
+    const account = await createMtcuteAuth(stub).restore();
+    // Then
+    expect(account).toBeNull();
+  });
+
+  test('gives the saved account', async () => {
+    // Given: saved user 7100; Telegram knows Linh Vu
+    const { stub } = authStub({
+      ...SAVED_SELF,
+      call: async () => [{ _: 'user', id: 7100, firstName: 'Linh', lastName: 'Vu' }],
+    });
+    // When
+    const account = await createMtcuteAuth(stub).restore();
+    // Then
+    expect(account).toEqual({ id: 7100, name: 'Linh Vu', initials: 'LV' });
+  });
+
+  test('shows the QR code and logs in when it is scanned', async () => {
+    // Given: one code, then Linh Vu scans it
+    const { stub } = authStub({
+      signInQr: async (params: { onUrlUpdated: (url: string, expires: Date) => void }) => {
+        params.onUrlUpdated('tg://login?token=abc', new Date(1793440800000));
+        return { id: 7100, firstName: 'Linh', lastName: 'Vu' };
+      },
+    });
+    const codes: QrCode[] = [];
+    // When
+    const account = await createMtcuteAuth(stub).loginQr(
+      (code) => codes.push(code),
+      new AbortController().signal,
+    );
+    // Then
+    expect([codes, account]).toEqual([
+      [{ url: 'tg://login?token=abc', expires: 1793440800000 }],
+      { id: 7100, name: 'Linh Vu', initials: 'LV' },
+    ]);
+  });
+
+  test('asks for the password after a scan when the account has one', async () => {
+    // Given: the scan needs the account's password
+    const { stub } = authStub({
+      signInQr: async () => {
+        throw new tl.RpcError(401, 'SESSION_PASSWORD_NEEDED');
+      },
+    });
+    // When
+    const result = await createMtcuteAuth(stub).loginQr(() => {}, new AbortController().signal);
+    // Then
+    expect(result).toBe('password');
+  });
+
+  test('stops the QR login when the caller aborts', async () => {
+    // Given: fake timers; no code comes
+    vi.useFakeTimers();
+    const qr = waitingQr();
+    const { stub } = authStub(qr.tg);
+    const controller = new AbortController();
+    // When
+    const kind = kindOf(createMtcuteAuth(stub).loginQr(() => {}, controller.signal));
+    await vi.advanceTimersByTimeAsync(1_000);
+    controller.abort('closed');
+    // Then
+    expect([await kind, qr.reason()]).toEqual(['offline', 'closed']);
+  });
+
+  test('gives up when no QR code comes in 15 s', async () => {
+    // Given: fake timers; no code comes
+    vi.useFakeTimers();
+    const qr = waitingQr();
+    const { stub } = authStub(qr.tg);
+    // When
+    const kind = kindOf(createMtcuteAuth(stub).loginQr(() => {}, new AbortController().signal));
+    await vi.advanceTimersByTimeAsync(15_000);
+    // Then
+    expect([await kind, (qr.reason() as Error | undefined)?.name]).toEqual([
+      'offline',
+      'TimeoutError',
+    ]);
+  });
+
+  test('says no internet when Telegram sends no code', async () => {
+    // Given: Telegram answers the code request with a user, not a sent code
+    const { stub } = authStub({
+      sendCode: async () => ({ id: 7100, firstName: 'Linh' }),
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).sendCode('84912345678'));
+    // Then
+    expect(kind).toBe('offline');
+  });
+
+  test('sends a code and gives back its receipt', async () => {
+    // Given: Telegram sends a 5-digit code with id h1
+    const { stub } = authStub({
+      sendCode: async () => ({ phoneCodeHash: 'h1', length: 5 }),
+    });
+    // When
+    const sent = await createMtcuteAuth(stub).sendCode('84912345678');
+    // Then
+    expect(sent).toEqual({ phone: '84912345678', length: 5, hash: 'h1' });
+  });
+
+  test("checks the code with the receipt's number and id", async () => {
+    // Given: the code is right for Minh Anh; the stub keeps what it was asked
+    let asked: Record<string, unknown> = {};
+    const { stub } = authStub({
+      signIn: async (params: Record<string, unknown>) => {
+        asked = params;
+        return { id: 7101, firstName: 'Minh', lastName: 'Anh' };
+      },
+    });
+    // When
+    const account = await createMtcuteAuth(stub).submitCode(
+      { phone: '84912345678', length: 5, hash: 'h1' },
+      '12345',
+    );
+    // Then
+    expect([
+      account,
+      { phone: asked.phone, phoneCodeHash: asked.phoneCodeHash, phoneCode: asked.phoneCode },
+    ]).toEqual([
+      { id: 7101, name: 'Minh Anh', initials: 'MA' },
+      { phone: '84912345678', phoneCodeHash: 'h1', phoneCode: '12345' },
+    ]);
+  });
+
+  test('asks for the password after the code when the account has one', async () => {
+    // Given: the code is right, and the account has a password
+    const { stub } = authStub({
+      signIn: async () => {
+        throw new tl.RpcError(401, 'SESSION_PASSWORD_NEEDED');
+      },
+    });
+    // When
+    const result = await createMtcuteAuth(stub).submitCode(
+      { phone: '84912345678', length: 5, hash: 'h1' },
+      '12345',
+    );
+    // Then
+    expect(result).toBe('password');
+  });
+
+  test('says the code is wrong', async () => {
+    // Given: Telegram turns the code down
+    const { stub } = authStub({
+      signIn: async () => {
+        throw new tl.RpcError(400, 'PHONE_CODE_INVALID');
+      },
+    });
+    // When
+    const kind = await kindOf(
+      createMtcuteAuth(stub).submitCode({ phone: '84912345678', length: 5, hash: 'h1' }, '12345'),
+    );
+    // Then
+    expect(kind).toBe('bad-code');
+  });
+
+  test('logs in with the password', async () => {
+    // Given: the password is right for Tuan Vu
+    const { stub } = authStub({
+      checkPassword: async () => ({ id: 7102, firstName: 'Tuan', lastName: 'Vu' }),
+    });
+    // When
+    const account = await createMtcuteAuth(stub).submitPassword('glider-pass');
+    // Then
+    expect(account).toEqual({ id: 7102, name: 'Tuan Vu', initials: 'TV' });
+  });
+
+  test('says the password is wrong', async () => {
+    // Given: Telegram turns the password down
+    const { stub } = authStub({
+      checkPassword: async () => {
+        throw new tl.RpcError(400, 'PASSWORD_HASH_INVALID');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).submitPassword('glider-pass'));
+    // Then
+    expect(kind).toBe('bad-password');
+  });
+
+  test('logs out through Telegram', async () => {
+    // Given: Telegram takes the log out
+    const calls: string[] = [];
+    const { stub, resets } = authStub({
+      logOut: async () => {
+        calls.push('logOut');
+      },
+    });
+    // When
+    await createMtcuteAuth(stub).logOut();
+    // Then
+    expect([calls, resets()]).toEqual([['logOut'], 0]);
+  });
+
+  test('reports an ended session on restore and keeps the saved data', async () => {
+    // Given: saved user 7100; Telegram says the session was revoked
+    const { stub, resets } = authStub({
+      ...SAVED_SELF,
+      call: async () => {
+        throw new tl.RpcError(401, 'SESSION_REVOKED');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).restore());
+    // Then
+    expect([kind, resets()]).toEqual(['session-ended', 0]);
+  });
+
+  test('reports an ended session on log out and keeps the saved data', async () => {
+    // Given: Telegram no longer knows the session
+    const { stub, resets } = authStub({
+      logOut: async () => {
+        throw new tl.RpcError(401, 'AUTH_KEY_UNREGISTERED');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).logOut());
+    // Then
+    expect([kind, resets()]).toEqual(['session-ended', 0]);
+  });
+
+  test('forget deletes the saved session', async () => {
+    // Given: a client
+    const { stub, resets } = authStub({});
+    // When
+    await createMtcuteAuth(stub).forget();
+    // Then
+    expect(resets()).toBe(1);
+  });
+
+  test('stays logged in when log out cannot reach Telegram', async () => {
+    // Given: the log out never reaches Telegram
+    const { stub, resets } = authStub({
+      logOut: async () => {
+        throw new Error('socket closed');
+      },
+    });
+    // When
+    const kind = await kindOf(createMtcuteAuth(stub).logOut());
+    // Then
+    expect([kind, resets()]).toEqual(['offline', 0]);
   });
 });

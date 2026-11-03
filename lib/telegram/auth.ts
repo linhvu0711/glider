@@ -4,6 +4,12 @@ export type Account = { id: number; name: string; initials: string };
 /** `expires` is ms since the epoch. */
 export type QrCode = { url: string; expires: number };
 
+/**
+ * What sendCode gives back: the number, the code length, and Telegram's id for this code.
+ * submitCode needs it, so a code is always sent before it is checked.
+ */
+export type SentCode = { phone: string; length: number; hash: string };
+
 export class AuthError extends Error {
   constructor(
     readonly kind:
@@ -26,8 +32,10 @@ export interface TelegramAuth {
     onCode: (code: QrCode) => void,
     signal: AbortSignal,
   ): Promise<Account | 'password'>;
-  sendCode(phone: string): Promise<{ length: number }>;
-  submitCode(code: string): Promise<Account | 'password'>;
+  sendCode(phone: string): Promise<SentCode>;
+  submitCode(sent: SentCode, code: string): Promise<Account | 'password'>;
   submitPassword(password: string): Promise<Account>;
   logOut(): Promise<void>;
+  /** Deletes the session saved on this device, with no call to Telegram. */
+  forget(): Promise<void>;
 }
