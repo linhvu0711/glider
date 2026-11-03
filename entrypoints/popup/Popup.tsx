@@ -6,13 +6,18 @@ import type { SendConnection } from '../../lib/send/connection';
 import type { Opened, Row, SendView } from '../../lib/send/state';
 import type { TelegramChats } from '../../lib/telegram/chats';
 
-function useOpened(opened: Promise<Opened>): Opened | null {
-  const [result, setResult] = useState<Opened | null>(null);
+function useOpened(opened: Promise<Opened>): Opened | { kind: 'failed' } | null {
+  const [result, setResult] = useState<Opened | { kind: 'failed' } | null>(null);
   useEffect(() => {
     let live = true;
-    void opened.then((value) => {
-      if (live) setResult(value);
-    });
+    void opened.then(
+      (value) => {
+        if (live) setResult(value);
+      },
+      () => {
+        if (live) setResult({ kind: 'failed' });
+      },
+    );
     return () => {
       live = false;
     };
@@ -91,6 +96,15 @@ export default function Popup({
   }, [close]);
 
   if (!result) return <div className="popup" />;
+  if (result.kind === 'failed') {
+    return (
+      <div className="popup popup-setup">
+        <AlertIcon className="setup-icon" width={22} height={22} />
+        <h1 className="setup-title">Something went wrong</h1>
+        <p className="muted setup-text">Nothing was sent. Close this and try again.</p>
+      </div>
+    );
+  }
   if (result.kind === 'setup') {
     return (
       <div className="popup popup-setup">

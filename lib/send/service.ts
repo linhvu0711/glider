@@ -29,6 +29,8 @@ const UNDO_MS = 5_000;
 // How long a send waits for Telegram. With no network mtcute waits forever, so no answer in
 // time means no internet.
 const ANSWER_MS = 15_000;
+// How long the account check may take before the link fails.
+const ACCOUNT_MS = 15_000;
 // How long a sent link stays in the popup.
 const SHOWN_MS = 2_500;
 const SEND_LIMIT = 10;
@@ -150,6 +152,20 @@ export function createSendService(telegram: TelegramSend): SendService {
   let sentAt: number | null = null;
   let loaded: Promise<void> = Promise.resolve();
 
+  // A check that never answers would hold the queue, and every change behind it, for good.
+  async function accountWithin(): Promise<number | null> {
+    const limit = new AbortController();
+    const timer = setTimeout(
+      () => limit.abort(new Error('The account check took too long.')),
+      ACCOUNT_MS,
+    );
+    try {
+      return await untilAborted(telegram.account(), limit.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // One change at a time, so no write is lost to another.
   function serial<T>(run: () => Promise<T>): Promise<T> {
     const next = queue.then(run);
@@ -221,8 +237,15 @@ export function createSendService(telegram: TelegramSend): SendService {
     const link = await serial(async () => {
       const found = state.links.find((l) => l.id === id && l.status === 'waiting');
       if (!found) return undefined;
+      let account: number | null;
+      try {
+        account = await accountWithin();
+      } catch {
+        await fail(id, { reason: 'other' });
+        return undefined;
+      }
       // A log out while it waited means the link is not sent (the log out dialog says so).
-      if ((await telegram.account()) !== found.account) {
+      if (account !== found.account) {
         await fail(id, { reason: 'logged-out' });
         return undefined;
       }
@@ -291,7 +314,7 @@ export function createSendService(telegram: TelegramSend): SendService {
 
     open(page) {
       return serial(async (): Promise<Opened> => {
-        const account = await telegram.account();
+        const account = await accountWithin();
         const chat = account === null ? null : await readTargetChat(account);
         if (account === null || !chat) return { kind: 'setup' };
         if (!page || !isWebPage(page.url)) return { kind: 'not-web', chat };
@@ -334,7 +357,14 @@ export function createSendService(telegram: TelegramSend): SendService {
         const found = state.links.find((l) => l.id === id);
         if (found?.status !== 'failed') return undefined;
         if (found.failure.reason === 'wait' && Date.now() < found.failure.retryAt) return undefined;
-        if ((await telegram.account()) !== found.account) {
+        let account: number | null;
+        try {
+          account = await accountWithin();
+        } catch {
+          await fail(id, { reason: 'other' });
+          return undefined;
+        }
+        if (account !== found.account) {
           await fail(id, { reason: 'logged-out' });
           return undefined;
         }

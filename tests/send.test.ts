@@ -384,6 +384,55 @@ describe('failed sends', () => {
     expect(link?.status === 'failed' ? link.failure : null).toEqual({ reason: 'other' });
   });
 
+  test('fails a link when the account check throws', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the check at the end of the 5 s throws
+    const { sender } = await setUp({ telegram: checks('ok', 'throws') });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    // When
+    await sender.open(EXAMPLE);
+    await advance(5_000);
+    // Then
+    expect([(await links())[0], lastNotice(create)]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'Not sent: something went wrong.',
+    ]);
+  });
+
+  test('fails a link when the account check never answers', async () => {
+    // Given: as above; the check at the end of the 5 s never answers
+    const { sender } = await setUp({ telegram: checks('ok', 'hangs') });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    // When
+    const first = await sender.open(EXAMPLE);
+    await advance(5_000 + 15_000);
+    const failed = [(await links())[0], lastNotice(create)];
+    const second = await sender.open(EXAMPLE_ORG);
+    if (first.kind !== 'added' || second.kind !== 'added') throw new Error('not added');
+    await sender.remove(first.id);
+    await sender.undo(second.id);
+    // Then
+    expect([failed, second.kind, await statuses()]).toMatchObject([
+      [{ status: 'failed', failure: { reason: 'other' } }, 'Not sent: something went wrong.'],
+      'added',
+      ['undone'],
+    ]);
+  });
+
+  test('rejects an open when the account check never answers', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the check on open never answers
+    const { service } = await setUp({ telegram: checks('hangs') });
+    // When
+    let said = 'pending';
+    void service.open(EXAMPLE).catch((e: Error) => {
+      said = e.message;
+    });
+    await advance(14_999);
+    const before = said;
+    await advance(1);
+    // Then
+    expect([before, said]).toEqual(['pending', 'The account check took too long.']);
+  });
+
   test('keeps a failed link until Retry or Remove', async () => {
     // Given: as the wait test
     const { sender } = await setUp();
@@ -409,6 +458,20 @@ describe('failed sends', () => {
       ['https://example.com/#fail=offline'],
     ]);
   });
+
+  test('the fake answers account checks from its list', async () => {
+    // Given
+    await storage.setItem('local:fakeSession', LINH);
+    await storage.setItem('local:fakeAccountChecks', ['ok', 'throws']);
+    const telegram = createFakeSend();
+    // When
+    const answers = [];
+    for (let call = 0; call < 3; call++) {
+      answers.push(await telegram.account().catch((e: Error) => e.message));
+    }
+    // Then
+    expect(answers).toEqual([LINH.id, 'The fake account check failed.', LINH.id]);
+  });
 });
 
 // A Telegram send that answers each call with the next entry: an error is thrown,
@@ -422,6 +485,30 @@ function scripted(...answers: (SendError | (() => Promise<void>))[]): TelegramSe
       await answer?.();
     },
   };
+}
+
+type Check = 'ok' | 'throws' | 'hangs';
+
+// A Telegram send whose account check answers each call with the next entry, then
+// answers Linh Vu; `sendText` comes from `send`.
+function checks(...answers: Check[]): TelegramSend {
+  return withChecks(answers, scripted());
+}
+
+function withChecks(answers: Check[], send: TelegramSend): TelegramSend {
+  return {
+    account: async () => {
+      const answer = answers.shift();
+      if (answer === 'throws') throw new Error('db');
+      if (answer === 'hangs') return new Promise<never>(() => {});
+      return LINH.id;
+    },
+    sendText: send.sendText,
+  };
+}
+
+function lastNotice(create: { mock: { calls: unknown[][] } }) {
+  return (create.mock.calls.at(-1)?.[1] as { message: string } | undefined)?.message;
 }
 
 async function failedId(sender: Awaited<ReturnType<typeof setUp>>['sender'], page: Page) {
@@ -473,6 +560,42 @@ describe('retry', () => {
     await advance(0);
     // Then
     expect((await links())[0]).toMatchObject({ status: 'failed', failure: { reason: 'unreachable' } });
+  });
+
+  test('fails a retry when the account check throws', async () => {
+    // Given: Linh Vu logged in, Read Later Bot saved; the first send has no internet,
+    // and the check on Retry throws
+    const { sender } = await setUp({
+      telegram: withChecks(['ok', 'ok', 'throws'], scripted(new SendError({ reason: 'offline' }))),
+    });
+    const create = vi.spyOn(fakeBrowser.notifications, 'create');
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    await sender.retry(id);
+    // Then
+    expect([(await links())[0], lastNotice(create)]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'Not sent: something went wrong.',
+    ]);
+  });
+
+  test('fails a retry when the account check never answers', async () => {
+    // Given: as above; the check on Retry never answers
+    const { sender } = await setUp({
+      telegram: withChecks(['ok', 'ok', 'hangs'], scripted(new SendError({ reason: 'offline' }))),
+    });
+    const id = await failedId(sender, EXAMPLE);
+    // When
+    const done = sender.retry(id);
+    await advance(15_000);
+    await done;
+    const failed = (await links())[0];
+    const next = await sender.open(EXAMPLE_ORG);
+    // Then
+    expect([failed, next.kind]).toMatchObject([
+      { status: 'failed', failure: { reason: 'other' } },
+      'added',
+    ]);
   });
 
   test('Retry before the wait is over does nothing', async () => {
